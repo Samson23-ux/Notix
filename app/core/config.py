@@ -45,8 +45,9 @@ class Settings(BaseSettings):
     SENTRY_SDK_DSN: str
 
     # google oauth
-    CLIENT_ID: str
-    CLIENT_SECRET: str
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_OAUTH_URL: str
+    GOOGLE_CLIENT_SECRET: str
 
     # github oauth
     GITHUB_USER_URL: str

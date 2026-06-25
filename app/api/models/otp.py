@@ -16,11 +16,6 @@ from sqlalchemy import (
 from app.api.models.base import Base
 
 
-class OtpPurpose(str, enum.Enum):
-    EMAIL_SIGNUP = "email_signup"
-    PASSWORD_RESET = "password_reset"
-
-
 class OtpStatus(str, enum.Enum):
     VALID = "valid"
     USED = "used"
@@ -35,9 +30,6 @@ class Otp(Base):
     otp: Mapped[str] = mapped_column(String, unique=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("users.id", name="otp_user_id_fk", ondelete="CASCADE")
-    )
-    purpose: Mapped[OtpPurpose] = mapped_column(
-        Enum(OtpPurpose, values_callable=lambda e: [m.value for m in e])
     )
     status: Mapped[OtpStatus] = mapped_column(
         Enum(OtpStatus, values_callable=lambda e: [m.value for m in e])
