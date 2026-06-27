@@ -132,6 +132,21 @@ class TestSignUpWithGoogle:
         token_patch.assert_called_once()
 
 
+class TestSignUpWithGithub:
+    @pytest.mark.asyncio
+    async def test_successful_sign_in(self, sign_in_with_github: httpx.Response):
+        assert sign_in_with_github.status_code == 200
+        assert "access_token" in sign_in_with_github.json()
+
+    @pytest.mark.asyncio
+    async def test_invalid_state(self, async_client: httpx.AsyncClient):
+        state: str = "invalid_github_state"
+        res: httpx.Response = await async_client.get(
+            f"/auth/github/callback?code=fakegithubcode&state={state}",
+            headers={"env": "testing"},
+        )
+
+
 class TestAuthToken:
     @pytest.mark.asyncio
     async def test_get_access_token(
@@ -228,6 +243,107 @@ class TestResendOtp:
         )
 
         assert res.status_code == 400
+
+
+class TestApiKey:
+    @pytest.mark.asyncio
+    async def test_create_api_key(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+
+        res: httpx.Response = await async_client.post(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        json_res = res.json()
+
+        assert res.status_code == 201
+        assert json_res["data"]["key"]
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_create_api_key(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        res: httpx.Response = await async_client.post(
+            "/auth/keys",
+            headers={"env": "test"},
+        )
+
+        assert res.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_get_api_key(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+
+        create_res: httpx.Response = await async_client.post(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        api_key: str = create_res.json()["data"]["key"]
+
+        res: httpx.Response = await async_client.get(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        json_res = res.json()
+
+        assert res.status_code == 200
+        assert json_res["data"]["key"] == api_key
+
+    @pytest.mark.asyncio
+    async def test_api_key_not_found(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+
+        res: httpx.Response = await async_client.get(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        assert res.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_api_key(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+
+        await async_client.post(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        res: httpx.Response = await async_client.delete(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        assert res.status_code == 204
 
 
 class TestLogout:

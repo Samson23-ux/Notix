@@ -124,109 +124,6 @@ async def async_client(async_session: AsyncSession, test_redis_client: Redis):
     app.dependency_overrides.clear()
 
 
-
-    AsyncConnection,
-    AsyncTransaction,
-)
-
-
-@pytest_asyncio.fixture(scope="session")
-async def async_engine():
-    async_db_engine: AsyncEngine = create_async_engine(
-        url=get_settings().ASYNC_TEST_DB_URL, poolclass=NullPool
-    )
-
-    async with async_db_engine.begin() as conn:
-        await conn.execute(text("""
-            CREATE OR REPLACE FUNCTION uuid_generate_v7()
-                RETURNS UUID
-                LANGUAGE SQL
-                VOLATILE
-                AS $$
-                    SELECT encode(
-                        set_bit(
-                            set_bit(
-                                overlay(
-                                    uuid_send(gen_random_uuid())
-                                    placing substring(int8send(floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint) FROM 3)
-                                    FROM 1 FOR 6
-                                ),
-                                52, 1
-                            ),
-                            53, 1
-                        ),
-                        'hex'
-                    )::uuid
-                $$;
-        """))
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield async_db_engine
-
-    async with async_db_engine.begin() as conn:
-        await conn.execute(text("DROP FUNCTION IF EXISTS uuid_generate_v7 CASCADE"))
-        await conn.execute(text("DROP EXTENSION IF EXISTS pgcrypto CASCADE"))
-        await conn.run_sync(Base.metadata.drop_all)
-
-    await async_db_engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def async_session(async_engine: AsyncEngine):
-    async_connection: AsyncConnection = await async_engine.connect()
-    async_transaction: AsyncTransaction = await async_connection.begin()
-
-    session = async_sessionmaker(
-        bind=async_connection,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-        join_transaction_mode="create_savepoint",
-    )
-
-    async_session: AsyncSession = session()
-    yield async_session
-
-    await async_session.close()
-    await async_transaction.rollback()
-    await async_connection.close()
-
-
-@pytest_asyncio.fixture
-async def test_redis_client():
-    try:
-        redis_client: Redis = Redis.from_url(
-            get_settings().REDIS_URL, decode_responses=True
-        )
-        yield redis_client
-    finally:
-        await redis_client.aclose()
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def flush_redis(test_redis_client: Redis):
-    yield
-    await test_redis_client.flushdb()
-
-
-@pytest_asyncio.fixture
-async def async_client(async_session: AsyncSession, test_redis_client: Redis):
-    async def get_test_session():
-        return async_session
-
-    app.dependency_overrides[get_session] = get_test_session
-    app.dependency_overrides[get_redis_client] = lambda: test_redis_client
-
-    async with LifespanManager(app):
-        async with AsyncClient(
-            transport=ASGITransport(app), base_url="http://localhost/api/v1"
-        ) as client:
-            yield client
-
-    app.dependency_overrides.clear()
-
-
 @pytest_asyncio.fixture
 async def create_user(async_client: AsyncClient):
     path: str = "app.api.services.auth_service.send_verification_email.delay"
@@ -301,3 +198,53 @@ async def login(async_client: AsyncClient, verify_user: Response):
     )
 
     return res
+
+
+# @pytest_asyncio.fixture
+# async def sign_in_with_github(async_client: AsyncClient):
+#     sign_in_res: Response = await async_client.get(
+#         "/auth/github,
+#         headers={"env": "test"},
+#     )
+
+#     assert sign_in_res.status_code == 302
+
+#     session_cookie = sign_in_res.cookies.get("session")
+
+#     signer = itsdangerous.TimestampSigner(settings.SESSION_SECRET_KEY)
+#     data = signer.unsign(session_cookie)
+#     client_data: dict = json.loads(base64.b64decode(data))["client_data"]
+
+#     state: str = client_data.get("state")
+
+#     fake_github_token: dict = {"access_token": "fakeaccesstoken"}
+#     user_profile: dict = {
+#         "id": "fakerandomid",
+#         "email": "fakeadmin@example.com",
+#         "github_id": "fake_github_id",
+#         "created_at": datetime.now(timezone.utc),
+#     }
+
+#     mock_client = AsyncMock()
+
+#     mock_response = Mock()
+#     mock_response.json.return_value = fake_github_token
+
+#     mock_client.post.return_value = mock_response
+
+#     app.state.github = mock_client
+
+#     profile_patch: AsyncMock = patch(
+#         f"{BASE_PATH}.auth_service_v1.get_user_profile", new_callable=AsyncMock
+#     ).start()
+
+#     profile_patch.return_value = user_profile
+
+#     callback_res: Response = await async_client.get(
+#         f"/auth/github/callback?code=fakegithubcode&state={state}",
+#         headers={"env": "testing"},
+#     )
+
+#     await profile_patch.stop()
+
+#     return callback_res
