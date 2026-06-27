@@ -24,7 +24,7 @@ from app.core.config import get_settings
 from app.api import models  # noqa: F401
 from app.api.repo.redis_repo import RedisRepository
 from app.api.services.auth_service import AuthService
-from app.dependencies import get_session, get_auth_service, get_redis_client
+from app.deps import get_session, get_auth_service, get_redis_client
 
 
 @pytest_asyncio.fixture(scope="session")
