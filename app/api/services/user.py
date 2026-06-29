@@ -4,7 +4,7 @@ import sentry_sdk.logger as sentry_logger
 
 from app.api.models.user import User
 from app.api.schemas.user import UserInDB
-from app.api.repo.user_repo import UserRepository
+from app.api.repo.user import UserRepository
 from app.core.exceptions import ServerError, UserNotFoundError
 
 

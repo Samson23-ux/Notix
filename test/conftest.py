@@ -22,8 +22,8 @@ from app.api.models.otp import Otp
 from app.api.models.base import Base
 from app.core.config import get_settings
 from app.api import models  # noqa: F401
-from app.api.repo.redis_repo import RedisRepository
-from app.api.services.auth_service import AuthService
+from app.api.repo.redis import RedisRepository
+from app.api.services.auth import AuthService
 from app.deps import get_session, get_auth_service, get_redis_client, get_request
 
 

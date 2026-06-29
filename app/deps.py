@@ -1,5 +1,4 @@
 import httpx
-import aio_pika
 from typing import Annotated
 from redis.asyncio import Redis
 from fastapi import Depends, Request
@@ -11,16 +10,17 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.api.models.user import User
 from app.core.security import Security
 from app.core.config import get_settings
+from app.api.repo.otp import OtpRepository
 from app.api.services.request import Request
 from app.database.session import get_session
-from app.api.repo.otp_repo import OtpRepository
-from app.api.repo.user_repo import UserRepository
-from app.api.repo.redis_repo import RedisRepository
+from app.api.repo.user import UserRepository
+from app.api.services.auth import AuthService
+from app.api.services.user import UserService
+from app.api.repo.redis import RedisRepository
 from app.core.exceptions import AuthenticationError
-from app.api.services.auth_service import AuthService
-from app.api.services.user_service import UserService
 from app.api.repo.unit_of_work import UnitOfWorkRepository
-
+from app.api.repo.notification import NotificationRepository
+from app.api.services.notification import NotificationService
 
 # Auth bearer
 bearer = HTTPBearer(auto_error=False)
@@ -76,25 +76,37 @@ async def get_unit_of_work(session: DBSession) -> UnitOfWorkRepository:
     return UnitOfWorkRepository(session=session)
 
 
+async def get_notification_repo(session: DBSession) -> NotificationRepository:
+    return NotificationRepository(async_session=session)
+
+
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 RedisRepo = Annotated[RedisRepository, Depends(get_redis_repo)]
 UnitOfWorkRepo = Annotated[UnitOfWorkRepository, Depends(get_unit_of_work)]
+NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
 
 
 #  -------------------- Service dependency ---------------------------- #
-
-
-async def get_auth_service(otp_repo: OtpRepo, redis_repo: RedisRepo) -> AuthService:
-    return AuthService(otp_repo=otp_repo, redis_repo=redis_repo)
 
 
 async def get_user_service(user_repo: UserRepo) -> UserService:
     return UserService(user_repo=user_repo)
 
 
+async def get_auth_service(otp_repo: OtpRepo, redis_repo: RedisRepo) -> AuthService:
+    return AuthService(otp_repo=otp_repo, redis_repo=redis_repo)
+
+
+async def get_notification_service(notis_repo: NotificationRepo) -> NotificationService:
+    return NotificationService(notis_repo=notis_repo)
+
+
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+NotificationServiceDep = Annotated[
+    NotificationService, Depends(get_notification_service)
+]
 
 
 # ------------------------ Auth dependency ---------------------------- #

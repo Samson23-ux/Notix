@@ -10,10 +10,10 @@ from app.api.models.user import User
 from app.core.security import Security
 from app.core.config import get_settings
 from app.api.services.request import Request
-from app.api.repo.otp_repo import OtpRepository
-from app.api.repo.user_repo import UserRepository
-from app.api.repo.redis_repo import RedisRepository
-from app.api.services.user_service import UserService
+from app.api.repo.otp import OtpRepository
+from app.api.repo.user import UserRepository
+from app.api.repo.redis import RedisRepository
+from app.api.services.user import UserService
 from app.task.celery_task import send_verification_email
 from app.api.repo.unit_of_work import UnitOfWorkRepository
 from app.api.schemas.user import (
