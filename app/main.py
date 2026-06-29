@@ -1,6 +1,10 @@
 import sentry_sdk
 from fastapi import FastAPI
+from httpx import AsyncClient
 from contextlib import asynccontextmanager
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 from starlette.middleware.sessions import SessionMiddleware
 
 
@@ -25,8 +29,10 @@ sentry_sdk.init(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.redis = redis_client
+    app.state.client = AsyncClient(base_url="http://localhost/api/v1", timeout=10.0)
     yield
     await app.state.redis.aclose()
+    await app.state.client.aclose()
 
 
 app = FastAPI(
@@ -35,6 +41,11 @@ app = FastAPI(
     version=settings.API_VERSION,
     description=settings.API_DESCRIPTION,
 )
+
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 app.include_router(router.router)

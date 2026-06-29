@@ -9,6 +9,9 @@ from app.core.exceptions import (
     InvalidOtpError,
     UserNotFoundError,
     CredentialError,
+    AuthorizationError,
+    CheckTimeoutError,
+    UnverifiedEmailError
 )
 
 
@@ -35,6 +38,17 @@ class ExceptionHandler:
                 initial_detail={
                     "status": "error",
                     "message": "User not authenticated.",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=AuthorizationError,
+            handler=create_exception_handler(
+                status_code=403,
+                initial_detail={
+                    "status": "error",
+                    "message": "User is not authorized to make the requested action",
                 },
             ),
         )
@@ -80,5 +94,27 @@ class ExceptionHandler:
                     "message": "Invalid credentials!",
                 },
                 status_code=400,
+            ),
+        )
+
+        self._app.add_exception_handler(
+            CheckTimeoutError,
+            create_exception_handler(
+                initial_detail={
+                    "status": "error",
+                    "message": "Ensure the device is connected to the internet",
+                },
+                status_code=408,
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=UnverifiedEmailError,
+            handler=create_exception_handler(
+                status_code=400,
+                initial_detail={
+                    "status": "error",
+                    "message": "Email not verified",
+                },
             ),
         )

@@ -1,5 +1,7 @@
+import os
 import json
 import base64
+import hashlib
 from uuid import uuid4
 from typing import Optional
 from jose import jwt, JWTError
@@ -31,6 +33,13 @@ class Security:
                 "scope": "openid email",
             },
         )
+
+    async def get_code_verifier():
+        return base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")[:43]
+
+    async def hash_code_challenge(verifier: str):
+        digest = hashlib.sha256(verifier.encode(encoding="utf-8")).digest()
+        return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
     async def encode_cursor(self, payload: dict) -> str:
         payload_string: str = json.dumps(payload)

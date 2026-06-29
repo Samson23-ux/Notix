@@ -26,6 +26,24 @@ class AuthenticationError(AppException):
     pass
 
 
+class AuthorizationError(AppException):
+    """User not authorized"""
+
+    pass
+
+
+class CheckTimeoutError(AppException):
+    """retry count exhausted"""
+
+    pass
+
+
+class UnverifiedEmailError(AppException):
+    """unverified email provided"""
+
+    pass
+
+
 class UserExistsError(AppException):
     """User already exists"""
 

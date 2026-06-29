@@ -1,3 +1,4 @@
+import httpx
 from typing import Annotated
 from redis.asyncio import Redis
 from fastapi import Depends, Request
@@ -9,6 +10,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.api.models.users import User
 from app.core.security import Security
 from app.core.config import get_settings
+from app.api.services.request import Request
 from app.database.session import get_session
 from app.api.repo.otp_repo import OtpRepository
 from app.api.repo.user_repo import UserRepository
@@ -16,6 +18,7 @@ from app.api.repo.redis_repo import RedisRepository
 from app.core.exceptions import AuthenticationError
 from app.api.services.auth_service import AuthService
 from app.api.services.user_service import UserService
+from app.api.repo.unit_of_work import UnitOfWorkRepository
 
 
 # Auth bearer
@@ -36,6 +39,23 @@ async def get_redis_client(request: Request):
 RedisDep = Annotated[Redis, Depends(get_redis_client)]
 
 
+# ------------------- Security dependency ------------------------------ #
+async def get_security():
+    return Security()
+
+
+SecurityDep = Annotated[Security, Depends(get_security)]
+
+
+# ------------------- Request dependency ------------------------------ #
+async def get_request(request: Request):
+    client: httpx.AsyncClient = request.app.state.client
+    return Request(client=client)
+
+
+RequestDep = Annotated[Request, Depends(get_request)]
+
+
 #  ------------------- Repo dependency ----------------------------- #
 
 
@@ -51,9 +71,14 @@ async def get_redis_repo(redis: RedisDep) -> RedisRepository:
     return RedisRepository(async_redis=redis)
 
 
+async def get_unit_of_work(session: DBSession) -> UnitOfWorkRepository:
+    return UnitOfWorkRepository(session=session)
+
+
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 RedisRepo = Annotated[RedisRepository, Depends(get_redis_repo)]
+UnitOfWorkRepo = Annotated[UnitOfWorkRepository, Depends(get_unit_of_work)]
 
 
 #  -------------------- Service dependency ---------------------------- #

@@ -4,8 +4,8 @@ from sqlalchemy import text
 from redis.asyncio import Redis
 from sqlalchemy.pool import NullPool
 from asgi_lifespan import LifespanManager
-from unittest.mock import patch, AsyncMock
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport, Response
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -24,7 +24,7 @@ from app.core.config import get_settings
 from app.api import models  # noqa: F401
 from app.api.repo.redis_repo import RedisRepository
 from app.api.services.auth_service import AuthService
-from app.deps import get_session, get_auth_service, get_redis_client
+from app.deps import get_session, get_auth_service, get_redis_client, get_request
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -107,11 +107,34 @@ async def flush_redis(test_redis_client: Redis):
     await test_redis_client.flushdb()
 
 
+def get_request_mock():
+    fake_github_token: dict = {"access_token": "fakeaccesstoken"}
+    user_profile: dict = {
+        "email": "fakeadmin@example.com",
+        "github_id": "fake_github_id",
+    }
+
+    request = MagicMock()
+    token_response = MagicMock()
+    user_profile_response = MagicMock()
+
+    token_response.json.return_value = fake_github_token
+    user_profile_response.json.return_value = user_profile
+
+    request.post.return_value = token_response
+    request.get.return_value = user_profile_response
+
+    return request
+
+
 @pytest_asyncio.fixture
 async def async_client(async_session: AsyncSession, test_redis_client: Redis):
     async def get_test_session():
         return async_session
+    
+    request = get_request_mock()
 
+    app.dependency_overrides[get_request] = lambda: request
     app.dependency_overrides[get_session] = get_test_session
     app.dependency_overrides[get_redis_client] = lambda: test_redis_client
 
@@ -200,51 +223,26 @@ async def login(async_client: AsyncClient, verify_user: Response):
     return res
 
 
-# @pytest_asyncio.fixture
-# async def sign_in_with_github(async_client: AsyncClient):
-#     sign_in_res: Response = await async_client.get(
-#         "/auth/github,
-#         headers={"env": "test"},
-#     )
+@pytest_asyncio.fixture
+async def sign_in_with_github(async_client: AsyncClient):
+    sign_in_res: Response = await async_client.get(
+        "/auth/github",
+        headers={"env": "test"},
+    )
 
-#     assert sign_in_res.status_code == 302
+    assert sign_in_res.status_code == 302
 
-#     session_cookie = sign_in_res.cookies.get("session")
+    session_cookie = sign_in_res.cookies.get("session")
 
-#     signer = itsdangerous.TimestampSigner(settings.SESSION_SECRET_KEY)
-#     data = signer.unsign(session_cookie)
-#     client_data: dict = json.loads(base64.b64decode(data))["client_data"]
+    signer = itsdangerous.TimestampSigner(settings.SESSION_SECRET_KEY)
+    data = signer.unsign(session_cookie)
+    client_data: dict = json.loads(base64.b64decode(data))["client_data"]
 
-#     state: str = client_data.get("state")
+    state: str = client_data.get("state")
 
-#     fake_github_token: dict = {"access_token": "fakeaccesstoken"}
-#     user_profile: dict = {
-#         "id": "fakerandomid",
-#         "email": "fakeadmin@example.com",
-#         "github_id": "fake_github_id",
-#         "created_at": datetime.now(timezone.utc),
-#     }
+    callback_res: Response = await async_client.get(
+        f"/auth/github/callback?code=fakegithubcode&state={state}",
+        headers={"env": "testing"},
+    )
 
-#     mock_client = AsyncMock()
-
-#     mock_response = Mock()
-#     mock_response.json.return_value = fake_github_token
-
-#     mock_client.post.return_value = mock_response
-
-#     app.state.github = mock_client
-
-#     profile_patch: AsyncMock = patch(
-#         f"{BASE_PATH}.auth_service_v1.get_user_profile", new_callable=AsyncMock
-#     ).start()
-
-#     profile_patch.return_value = user_profile
-
-#     callback_res: Response = await async_client.get(
-#         f"/auth/github/callback?code=fakegithubcode&state={state}",
-#         headers={"env": "testing"},
-#     )
-
-#     await profile_patch.stop()
-
-#     return callback_res
+    return callback_res

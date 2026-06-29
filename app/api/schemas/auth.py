@@ -52,3 +52,10 @@ class OtpResendResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     pass
+
+
+class ApiKeyResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    key: str
+    created_at: datetime

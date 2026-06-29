@@ -7,5 +7,5 @@ T = TypeVar("T", bound=BaseModel)
 
 class SuccessResponse(BaseModel, Generic[T]):
     status: str = "success"
-    message: str
+    message: Optional[str] = None
     data: Optional[T | list[T]] = None

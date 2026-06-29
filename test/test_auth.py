@@ -90,7 +90,9 @@ class TestSignUpWithGoogle:
     @pytest.mark.asyncio
     async def test_sign_in_google(self, async_client: httpx.AsyncClient):
         url_path: str = "app.api.routers.auth.Request.url_for"
-        token_path: str = "app.api.routers.auth.oauth.google.authorize_redirect"
+        token_path: str = (
+            "app.api.routers.auth.security.oauth.google.authorize_redirect"
+        )
 
         with (
             patch(url_path, new_callable=AsyncMock) as url_patch,
@@ -115,7 +117,9 @@ class TestSignUpWithGoogle:
 
         token: dict = {"userinfo": payload}
 
-        token_path: str = "app.api.routers.auth.oauth.google.authorize_access_token"
+        token_path: str = (
+            "app.api.routers.auth.security.oauth.google.authorize_access_token"
+        )
 
         with patch(token_path, new_callable=AsyncMock) as token_patch:
             token_patch.return_value = token
@@ -275,6 +279,33 @@ class TestApiKey:
         )
 
         assert res.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_get_all_api_keys(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+
+        await async_client.post(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        res: httpx.Response = await async_client.get(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        json_res = res.json()
+
+        assert res.status_code == 200
+        assert len(json_res["data"]) >= 1
 
     @pytest.mark.asyncio
     async def test_get_api_key(
