@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 
 
 from app.api.models.otp import Otp
-from app.api.models.users import User
+from app.api.models.user import User
 from app.core.security import Security
 from app.core.config import get_settings
 from app.api.services.request import Request

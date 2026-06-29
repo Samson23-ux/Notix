@@ -4,10 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_encoding="utf-8",
-        extra="allow",
-        case_sensitive=False
+        env_file=".env", env_encoding="utf-8", extra="allow", case_sensitive=False
     )
 
     # environment
@@ -62,7 +59,15 @@ class Settings(BaseSettings):
     SESSION_SECRET_KEY: str
 
     # rabbitmq
-    API_BROKER: str
+    BROKER_URL: str
+    BROKER_HOST: str
+    BROKER_DLQ: list[tuple] = [("notix.dlq", "dlq")]
+    BROKER_QUEUE: list[tuple] = [
+        ("notix.high", "high"),
+        ("notix.standard", "standard"),
+        ("notix.webhook", "webhook"),
+        ("notix.batch", "batch"),
+    ]
 
     # resend email
     API_EMAIL: str
@@ -70,6 +75,7 @@ class Settings(BaseSettings):
 
     # otp
     OTP_EXPIRE_TIME: int
+
 
 @lru_cache(maxsize=1)
 def get_settings():

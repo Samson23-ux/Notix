@@ -1,8 +1,8 @@
 from app.api.models.otp import Otp
-from app.api.models.users import User
-from app.api.models.emails import Email
-from app.api.models.api_keys import ApiKey
-from app.api.models.notifications import Notification
+from app.api.models.user import User
+from app.api.models.email import Email
+from app.api.models.api_key import ApiKey
+from app.api.models.notification import Notification
 
 
 __all__ = [

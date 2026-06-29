@@ -11,13 +11,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.api.routers import router
 from app.core.config import get_settings
 from app.database.session import redis_client
+from app.api.services.channel import EventChannel
 
-
-settings = get_settings()
+SETTINGS = get_settings()
 
 
 sentry_sdk.init(
-    dsn=settings.SENTRY_SDK_DSN,
+    dsn=SETTINGS.SENTRY_SDK_DSN,
     enable_logs=True,
     send_default_pii=True,
     traces_sample_rate=1.0,
@@ -26,20 +26,47 @@ sentry_sdk.init(
 )
 
 
+async def create_exchange_and_queue(channel: EventChannel):
+    dlqs = SETTINGS.BROKER_DLQ
+    queues = SETTINGS.BROKER_QUEUE
+
+    dlq_exchange = await channel.create_exchange("notix.dlx", durable=True)
+    queue_exchange = await channel.create_exchange("notix.direct", durable=True)
+
+    for n, rk in dlqs:
+        await channel.bind_queue(dlq_exchange, n, rk, durable=True)
+
+    for n, rk in queues:
+        await channel.bind_queue(
+            queue_exchange,
+            n,
+            rk,
+            durable=True,
+            x_max_priority=10,
+            x_dead_letter_exchange="notix.dlx",
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.redis = redis_client
     app.state.client = AsyncClient(base_url="http://localhost/api/v1", timeout=10.0)
+
+    event_channel = EventChannel(SETTINGS.BROKER_URL)
+    await create_exchange_and_queue(event_channel)
+
     yield
+
     await app.state.redis.aclose()
     await app.state.client.aclose()
+    await event_channel.aclose()
 
 
 app = FastAPI(
     lifespan=lifespan,
-    title=settings.API_TITLE,
-    version=settings.API_VERSION,
-    description=settings.API_DESCRIPTION,
+    title=SETTINGS.API_TITLE,
+    version=SETTINGS.API_VERSION,
+    description=SETTINGS.API_DESCRIPTION,
 )
 
 
@@ -55,8 +82,8 @@ app.add_middleware(
     SessionMiddleware,
     max_age=900,
     same_site="lax",
-    secret_key=settings.SESSION_SECRET_KEY,
-    https_only=settings.ENVIRONMENT == "production",
+    secret_key=SETTINGS.SESSION_SECRET_KEY,
+    https_only=SETTINGS.ENVIRONMENT == "production",
 )
 
 

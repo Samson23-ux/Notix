@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 
 from app.api.models.otp import OtpStatus
-from app.api.models.users import UserType
+from app.api.models.user import UserType
 
 
 class AuthBase(BaseModel):

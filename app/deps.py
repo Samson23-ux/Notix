@@ -1,4 +1,5 @@
 import httpx
+import aio_pika
 from typing import Annotated
 from redis.asyncio import Redis
 from fastapi import Depends, Request
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 
-from app.api.models.users import User
+from app.api.models.user import User
 from app.core.security import Security
 from app.core.config import get_settings
 from app.api.services.request import Request

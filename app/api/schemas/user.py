@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, ConfigDict
 
 
-from app.api.models.users import UserType
+from app.api.models.user import UserType
 
 
 class UserBase(BaseModel):

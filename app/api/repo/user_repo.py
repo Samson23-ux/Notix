@@ -3,7 +3,7 @@ from sqlalchemy import and_
 from datetime import datetime, timezone
 
 
-from app.api.models.users import User
+from app.api.models.user import User
 from app.api.schemas.user import UserBase
 from app.api.repo.base import BaseRepository
 
