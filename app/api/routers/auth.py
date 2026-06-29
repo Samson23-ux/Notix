@@ -193,8 +193,7 @@ async def verify_account(
     email_verify: EmailVerify,
     auth_service: AuthServiceDep,
 ):
-    refresh_token: str = request.cookies.get("refresh_token")
-    await auth_service.verify_account(refresh_token, uow, email_verify)
+    await auth_service.verify_account(uow, email_verify)
     return SuccessResponse(message="User email verified successfully")
 
 

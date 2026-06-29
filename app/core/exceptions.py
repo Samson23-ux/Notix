@@ -14,6 +14,12 @@ class ServerError(AppException):
     pass
 
 
+class ServiceUnavailable(AppException):
+    """Service unavailable temporarily"""
+
+    pass
+
+
 class TransientError(AppException):
     """Worker Transient error"""
 
@@ -68,6 +74,20 @@ class CredentialError(AppException):
     """wrong credentials provided"""
 
     pass
+
+
+class NotificationExistsError(AppException):
+    """idempotency key exists"""
+
+    def __init__(self, key: str):
+        self.key = key
+
+
+class NotificationNotFoundError(AppException):
+    """Notification not found"""
+
+    def __init__(self, id: str):
+        self.id = id
 
 
 def create_exception_handler(

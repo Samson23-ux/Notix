@@ -56,8 +56,7 @@ class EventChannel:
 
         await queue.bind(exchange, routing_key=routing_key)
 
-    @property
-    async def queue_depth(self, name: str, **kwargs):
+    async def queue_depth(self, name: str, **kwargs) -> int:
         channel: aio_pika.Channel = await self._async_connection.channel()
         queue: aio_pika.Queue = await channel.declare_queue(name, **kwargs)
 

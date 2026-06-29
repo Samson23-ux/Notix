@@ -68,6 +68,7 @@ class Settings(BaseSettings):
         ("notix.webhook", "webhook"),
         ("notix.batch", "batch"),
     ]
+    MAXIMUM_QUEUE_DEPTH: int = 5000
 
     # resend email
     API_EMAIL: str

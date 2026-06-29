@@ -29,19 +29,16 @@ class WebhookNotification(NotificationBase):
     payload: dict
 
 
-class NotificationResponse(BaseModel):
+class NotificationResponse(NotificationBase):
     id: UUID
     status: NotificationStatus
+    body: str | None
+    subject: str | None
+    recipient: EmailStr | None
+    webhook_url: str | None
+    payload: dict | None
     created_at: datetime
-    delivered_at: datetime
-    dead_lettered_at: datetime
-    faliure_reason: str
-    retry_count: int
-
-
-class EmailResponse(EmailNotification, NotificationResponse):
-    pass
-
-
-class WebhookResponse(WebhookNotification, NotificationResponse):
-    pass
+    delivered_at: datetime | None
+    dead_lettered_at: datetime | None
+    faliure_reason: str | None
+    retry_count: int | None

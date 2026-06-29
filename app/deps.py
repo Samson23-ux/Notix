@@ -11,14 +11,15 @@ from app.api.models.user import User
 from app.core.security import Security
 from app.core.config import get_settings
 from app.api.repo.otp import OtpRepository
-from app.api.services.request import Request
 from app.database.session import get_session
 from app.api.repo.user import UserRepository
 from app.api.services.auth import AuthService
 from app.api.services.user import UserService
 from app.api.repo.redis import RedisRepository
+from app.api.services.channel import EventChannel
 from app.core.exceptions import AuthenticationError
 from app.api.repo.unit_of_work import UnitOfWorkRepository
+from app.api.services.request import Request as HttpRequest
 from app.api.repo.notification import NotificationRepository
 from app.api.services.notification import NotificationService
 
@@ -32,8 +33,8 @@ DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 
 # ------------------- Redis dependency ------------------------------ #
-async def get_redis_client(request: Request):
-    redis_client = request.app.state.redis
+async def get_redis_client(request: Request) -> Redis:
+    redis_client: Redis = request.app.state.redis
     return redis_client
 
 
@@ -41,17 +42,26 @@ RedisDep = Annotated[Redis, Depends(get_redis_client)]
 
 
 # ------------------- Security dependency ------------------------------ #
-async def get_security():
+async def get_security() -> Security:
     return Security()
 
 
 SecurityDep = Annotated[Security, Depends(get_security)]
 
 
+# ------------------- EventChannel dependency ------------------------------ #
+async def get_event_channel(request: Request) -> EventChannel:
+    channel: EventChannel = request.app.state.channel
+    return channel
+
+
+EvenetChannelDep = Annotated[EventChannel, Depends(get_event_channel)]
+
+
 # ------------------- Request dependency ------------------------------ #
-async def get_request(request: Request):
+async def get_request(request: Request) -> HttpRequest:
     client: httpx.AsyncClient = request.app.state.client
-    return Request(client=client)
+    return HttpRequest(async_client=client)
 
 
 RequestDep = Annotated[Request, Depends(get_request)]
@@ -136,6 +146,10 @@ async def get_current_user(
     if user_type == "email":
         user: User = await user_service.get_user_by_email(
             email=user_email, is_verified=True, is_deactivated=False
+        )
+    elif user_type == "github":
+        user: User = await user_service.get_user_by_email(
+            github_email=user_email, is_verified=True, is_deactivated=False
         )
     else:
         user: User = await user_service.get_user_by_email(

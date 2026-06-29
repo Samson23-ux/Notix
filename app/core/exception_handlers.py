@@ -11,7 +11,10 @@ from app.core.exceptions import (
     CredentialError,
     AuthorizationError,
     CheckTimeoutError,
-    UnverifiedEmailError
+    UnverifiedEmailError,
+    ServiceUnavailable,
+    NotificationExistsError,
+    NotificationNotFoundError,
 )
 
 
@@ -27,6 +30,17 @@ class ExceptionHandler:
                 initial_detail={
                     "status": "error",
                     "message": "Oops! Something went wrong.",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            ServiceUnavailable,
+            create_exception_handler(
+                status_code=503,
+                initial_detail={
+                    "status": "error",
+                    "message": "Service unavailble! Try again after five minutes",
                 },
             ),
         )
@@ -115,6 +129,28 @@ class ExceptionHandler:
                 initial_detail={
                     "status": "error",
                     "message": "Email not verified",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=NotificationExistsError,
+            handler=create_exception_handler(
+                status_code=409,
+                initial_detail={
+                    "status": "error",
+                    "message": "Notification exists with the idempotency key {key}",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=NotificationNotFoundError,
+            handler=create_exception_handler(
+                status_code=404,
+                initial_detail={
+                    "status": "error",
+                    "message": "Notification not found with id {id}",
                 },
             ),
         )

@@ -97,6 +97,16 @@ class AuthService:
             raise ServerError() from e
 
         return user_email, user_type
+    
+    def _get_user_email(self, user: User) -> str:
+        if user.type == "email":
+            user_email: str = user.email
+        elif user.type == "github":
+            user_email: str = user.github_email
+        else:
+            user_email: str = user.google_email
+
+        return user_email
 
     async def sign_up_with_email(
         self, email_login: EmailLogin, user_service: UserService, security: Security
@@ -266,7 +276,6 @@ class AuthService:
 
     async def verify_account(
         self,
-        refresh_token: str | None,
         uow: UnitOfWorkRepository,
         email_verify: EmailVerify,
     ):
@@ -414,6 +423,9 @@ class AuthService:
         if curr_user.type == "email":
             user_email: str = curr_user.email
             user = EmailUserResponse.model_validate(curr_user)
+        if curr_user.type == "github":
+            user_email: str = curr_user.github_email
+            user = GithubUserResponse.model_validate(curr_user)
         else:
             user_email: str = curr_user.google_email
             user = GoogleUserResponse.model_validate(curr_user)
@@ -431,11 +443,7 @@ class AuthService:
         refresh_token: str,
         security: Security,
     ):
-        if curr_user.type == "email":
-            user_email: str = curr_user.email
-        else:
-            user_email: str = curr_user.google_email
-
+        user_email: str = self._get_user_email(curr_user)
         _ = await self._revoke_refresh_token(refresh_token, security)
 
         curr_user.is_active = False
@@ -453,11 +461,7 @@ class AuthService:
         refresh_token: str,
         security: Security,
     ):
-        if curr_user.type == "email":
-            user_email: str = curr_user.email
-        else:
-            user_email: str = curr_user.google_email
-
+        user_email: str = self._get_user_email(curr_user)
         await user_service.delete_user(curr_user)
         _ = await self._revoke_refresh_token(refresh_token, security)
 

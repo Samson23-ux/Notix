@@ -54,12 +54,13 @@ async def lifespan(app: FastAPI):
 
     event_channel = EventChannel(SETTINGS.BROKER_URL)
     await create_exchange_and_queue(event_channel)
+    app.state.channel = event_channel
 
     yield
 
     await app.state.redis.aclose()
     await app.state.client.aclose()
-    await event_channel.aclose()
+    await app.state.channel.aclose()
 
 
 app = FastAPI(
