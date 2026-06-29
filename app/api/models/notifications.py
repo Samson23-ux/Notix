@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import (
     String,
@@ -59,6 +60,7 @@ class Notification(Base):
     subject: Mapped[str | None] = mapped_column(String)
     body: Mapped[str | None] = mapped_column(String)
     webhook_url: Mapped[str | None] = mapped_column(String)
+    payload: Mapped[dict] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
