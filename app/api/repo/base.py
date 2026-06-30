@@ -8,7 +8,6 @@ from typing import TypeVar, Generic, Any, Optional
 
 from app.api.models.base import Base
 
-
 Entity = TypeVar("Entity", bound=BaseModel)
 SqlalchemyModel = TypeVar("SqlAlchemyModel", bound=Base)
 
@@ -48,12 +47,12 @@ class BaseRepository(ABC, Generic[Entity, SqlalchemyModel]):
         await self._async_session.delete(model)
         await self._async_session.flush()
 
-    async def get_record(
-        self, **filters
-    ) -> SqlalchemyModel | None:
+    async def get_record(self, **filters) -> SqlalchemyModel | None:
         filter_conditions: list[Any] = self._get_filters(**filters)
 
-        res = await self._async_session.execute(select(self.model).where(*filter_conditions))
+        res = await self._async_session.execute(
+            select(self.model).where(*filter_conditions)
+        )
         return res.scalar()
 
     @abstractmethod
@@ -65,6 +64,12 @@ class BaseRepository(ABC, Generic[Entity, SqlalchemyModel]):
         return []
 
     # sync db queries
+    def get_sync_record(self, **filters) -> SqlalchemyModel | None:
+        filter_conditions: list[Any] = self._get_filters(**filters)
+
+        res = self._sync_session.execute(select(self.model).where(*filter_conditions))
+        return res.scalar()
+
     def sync_add(
         self, entity: Optional[Entity] = None, model: Optional[SqlalchemyModel] = None
     ):

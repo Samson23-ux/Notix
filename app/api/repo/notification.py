@@ -28,4 +28,4 @@ class NotificationRepository(BaseRepository[NotificationBase, Notification]):
             filter_conditions.append(self.model.created_at <= cutoff)
 
     def _entity_to_model(self, entity: NotificationBase) -> Notification:
-        return Notification(**entity)
+        return Notification(**entity.model_dump())

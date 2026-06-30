@@ -1,0 +1,299 @@
+import resend
+import secrets
+import psycopg2
+from uuid import UUID
+from celery import states
+from resend.exceptions import ResendError
+from datetime import datetime, timezone, timedelta
+from celery.exceptions import MaxRetriesExceededError, Reject
+
+
+from app.api.models.email import Email
+from app.core.config import get_settings
+from app.api.schemas.auth import OtpInDB
+from app.api.repo.otp import OtpRepository
+from app.api.services.otp import OtpService
+from app.worker.celery_app import celery_app
+from app.api.repo.user import UserRepository
+from app.api.services.user import UserService
+from app.api.repo.email import EmailRepository
+from app.api.repo.redis import RedisRepository
+from app.api.services.email import EmailService
+from app.api.models.notification import Notification
+from app.worker.tasks.base import BaseTaskWithFailure
+from app.worker.db import get_db_session, get_redis_client
+from app.api.repo.notification import NotificationRepository
+from app.api.services.notification import NotificationService
+
+TTL = 60 * 60 * 24
+SENDER_EMAIL = get_settings().API_EMAIL
+RESEND_API_KEY = get_settings().RESEND_API_KEY
+
+
+def get_email_service() -> EmailService:
+    session = get_db_session()
+
+    email_service: EmailService = EmailService(
+        email_repo=EmailRepository(sync_session=session)
+    )
+
+    return email_service
+
+
+def get_notification_service() -> NotificationService:
+    session = get_db_session()
+
+    email_service: NotificationService = NotificationService(
+        email_repo=NotificationRepository(sync_session=session)
+    )
+
+    return email_service
+
+
+def get_user_service() -> UserService:
+    session = get_db_session()
+    user_service: UserService = UserService(
+        user_repo=UserRepository(sync_session=session)
+    )
+    return user_service
+
+
+def get_otp_service() -> OtpService:
+    session = get_db_session()
+    otp_service: OtpService = OtpService(otp_repo=OtpRepository(sync_session=session))
+    return otp_service
+
+
+def get_redis_repo() -> RedisRepository:
+    return RedisRepository(sync_redis=get_redis_client())
+
+
+def verification_message(otp: str):
+    return f"""
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                </head>
+                <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,sans-serif;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+                    <tr>
+                        <td align="center">
+                        <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                            <tr>
+                            <td align="center" style="padding-bottom:24px;">
+                                <h2 style="margin:0;color:#1a1a1a;font-size:22px;">Verify your email</h2>
+                            </td>
+                            </tr>
+                            <tr>
+                            <td align="center" style="padding-bottom:16px;">
+                                <p style="margin:0;color:#555555;font-size:15px;line-height:1.6;">
+                                Use the code below to complete your verification. It expires in <strong>15 minutes</strong>.
+                                </p>
+                            </td>
+                            </tr>
+                            <tr>
+                            <td align="center" style="padding:24px 0;">
+                                <div style="display:inline-block;background:#f0f4ff;border-radius:8px;padding:16px 40px;">
+                                <span style="font-size:36px;font-weight:bold;letter-spacing:10px;color:#3b5bdb;">{otp}</span>
+                                </div>
+                            </td>
+                            </tr>
+                            <tr>
+                            <td align="center" style="padding-top:16px;">
+                                <p style="margin:0;color:#999999;font-size:13px;">
+                                If you did not request this, please ignore this email.
+                                </p>
+                            </td>
+                            </tr>
+                        </table>
+                        </td>
+                    </tr>
+                    </table>
+                </body>
+            </html>
+            """
+
+
+@celery_app.task(base=BaseTaskWithFailure, bind=True)
+def send_verification_email(self, email_id: str, recipient_email: str, user_id: str):
+    try:
+        redis_repo = get_redis_repo()
+        otp_service = get_otp_service()
+        email_service = get_email_service()
+
+        key: str = f"idempotency:{email_id}"
+        already_processed: str | None = redis_repo.get_processed_email(key)
+
+        if not already_processed:
+            otp: str = str(secrets.randbelow(900000) + 100000)
+
+            email_service.api_key = RESEND_API_KEY
+            email_service.send(
+                SENDER_EMAIL,
+                recipient_email,
+                "Email Verification Code",
+                verification_message(otp),
+            )
+
+            redis_repo.mark_email_processed(key, "1", TTL)
+
+            email: Email = email_service.get_proccessed_email(email_id)
+            email.status = "delivered"
+            email.delivered_at = datetime.now(timezone.utc)
+            email_service.update_processed_email(email)
+
+            otp_payload: OtpInDB = OtpInDB(
+                otp=otp,
+                user_id=UUID(user_id),
+                expires_at=datetime.now(timezone.utc)
+                + timedelta(minutes=get_settings().OTP_EXPIRE_TIME),
+            )
+
+            otp_service.create_otp(otp_payload)
+    except (
+        ResendError,
+        psycopg2.OperationalError,
+        psycopg2.InterfaceError,
+        psycopg2.extensions.TransactionRollbackError,
+    ) as exc:
+        """retry for transient errors"""
+        if isinstance(exc, ResendError):
+            if hasattr(exc, "code") and exc.code >= 500:
+                raise self.retry(exc=exc)
+        raise self.retry(exc=exc)
+    except (Exception, MaxRetriesExceededError) as exc:
+        """Update state and reject manaully to send to dlq for non-transient errors"""
+        self.update_state(
+            state=states.FAILURE,
+            meta={
+                "record_id": email_id,
+                "type": "verification",
+                "error": type(exc).__name__,
+                "details": str(exc),
+                "retries": self.request.retries,
+            },
+        )
+
+        raise Reject(exc, requeue=False)
+    finally:
+        otp_service._otp_repo.close()
+        redis_repo._sync_redis.close()
+        email_service._email_repo.close()
+
+
+@celery_app.task(base=BaseTaskWithFailure, bind=True)
+def send_email_task(
+    self, notification_id: str, recipient_email: str, subject: str, body: str
+):
+    try:
+        redis_repo = get_redis_repo()
+        email_service = get_email_service()
+        notification_service = get_notification_service()
+
+        key: str = f"idempotency:{notification_id}"
+        already_processed: str | None = redis_repo.get_processed_email(key)
+
+        notification: Notification = notification_service._get_notification(
+            notification_id
+        )
+
+        if not already_processed:
+            email_service.api_key = RESEND_API_KEY
+            email_service.send(SENDER_EMAIL, recipient_email, subject, body)
+
+            redis_repo.mark_email_processed(key, "1", TTL)
+
+            notification.status = "delivered"
+            notification.delivered_at = datetime.now(timezone.utc)
+
+            notification_service.update_notification(notification)
+    except (
+        ResendError,
+        psycopg2.OperationalError,
+        psycopg2.InterfaceError,
+        psycopg2.extensions.TransactionRollbackError,
+    ) as exc:
+        """retry for transient errors"""
+        if isinstance(exc, ResendError):
+            if hasattr(exc, "code") and exc.code >= 500:
+                raise self.retry(exc=exc)
+        raise self.retry(exc=exc)
+    except (Exception, MaxRetriesExceededError) as exc:
+        """Update state and reject manaully to send to dlq for non-transient errors"""
+        self.update_state(
+            state=states.FAILURE,
+            meta={
+                "record_id": notification_id,
+                "type": "notification",
+                "error": type(exc).__name__,
+                "details": str(exc),
+                "retries": self.request.retries,
+            },
+        )
+
+        notification.dead_lettered_at = datetime.now(timezone.utc)
+        raise Reject(exc, requeue=False)
+    finally:
+        redis_repo._sync_redis.close()
+        email_service._email_repo.close()
+        notification_service._notis_repo.close()
+
+
+@celery_app.task(base=BaseTaskWithFailure, bind=True)
+def send_critical_email_task(
+    self, notification_id: str, recipient_email: str, subject: str, body: str
+):
+    try:
+        redis_repo = get_redis_repo()
+        email_service = get_email_service()
+        notification_service = get_notification_service()
+
+        key: str = f"idempotency:{notification_id}"
+        already_processed: str | None = redis_repo.get_processed_email(key)
+
+        notification: Notification = notification_service._get_notification(
+            notification_id
+        )
+
+        if not already_processed:
+            email_service.api_key = RESEND_API_KEY
+            email_service.send(SENDER_EMAIL, recipient_email, subject, body)
+
+            redis_repo.mark_email_processed(key, "1", TTL)
+
+            notification.status = "delivered"
+            notification.delivered_at = datetime.now(timezone.utc)
+
+            notification_service.update_notification(notification)
+    except (
+        ResendError,
+        psycopg2.OperationalError,
+        psycopg2.InterfaceError,
+        psycopg2.extensions.TransactionRollbackError,
+    ) as exc:
+        """retry for transient errors"""
+        if isinstance(exc, ResendError):
+            if hasattr(exc, "code") and exc.code >= 500:
+                raise self.retry(exc=exc)
+        raise self.retry(exc=exc)
+    except (Exception, MaxRetriesExceededError) as exc:
+        """Update state and reject manaully to send to dlq for non-transient errors"""
+        self.update_state(
+            state=states.FAILURE,
+            meta={
+                "record_id": notification_id,
+                "type": "notification",
+                "error": type(exc).__name__,
+                "details": str(exc),
+                "retries": self.request.retries,
+            },
+        )
+
+        notification.dead_lettered_at = datetime.now(timezone.utc)
+        raise Reject(exc, requeue=False)
+    finally:
+        redis_repo._sync_redis.close()
+        email_service._email_repo.close()
+        notification_service._notis_repo.close()

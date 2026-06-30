@@ -47,10 +47,18 @@ async def create_exchange_and_queue(channel: EventChannel):
         )
 
 
+async def raise_for_5xx(response):
+    response.raise_for_status()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.redis = redis_client
-    app.state.client = AsyncClient(base_url="http://localhost/api/v1", timeout=10.0)
+    app.state.client = AsyncClient(
+        base_url="http://localhost/api/v1",
+        timeout=10.0,
+        event_hooks={"response": [raise_for_5xx]},
+    )
 
     event_channel = EventChannel(SETTINGS.BROKER_URL)
     await create_exchange_and_queue(event_channel)

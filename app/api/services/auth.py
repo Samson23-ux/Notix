@@ -1,19 +1,20 @@
 import sentry_sdk
-from uuid import uuid4
-from httpx import Response
+from uuid import uuid7, UUID
 import sentry_sdk.logger as sentry_logger
-from datetime import datetime, timezone, timedelta
+from httpx import Response, HTTPStatusError
 
 
 from app.api.models.otp import Otp
 from app.api.models.user import User
 from app.core.security import Security
 from app.core.config import get_settings
-from app.api.services.request import Request
 from app.api.repo.otp import OtpRepository
+from app.api.schemas.email import EmailInDB
+from app.api.services.request import Request
 from app.api.repo.user import UserRepository
-from app.api.repo.redis import RedisRepository
 from app.api.services.user import UserService
+from app.api.repo.redis import RedisRepository
+from app.api.services.email import EmailService
 from app.task.celery_task import send_verification_email
 from app.api.repo.unit_of_work import UnitOfWorkRepository
 from app.api.schemas.user import (
@@ -97,7 +98,7 @@ class AuthService:
             raise ServerError() from e
 
         return user_email, user_type
-    
+
     def _get_user_email(self, user: User) -> str:
         if user.type == "email":
             user_email: str = user.email
@@ -109,8 +110,13 @@ class AuthService:
         return user_email
 
     async def sign_up_with_email(
-        self, email_login: EmailLogin, user_service: UserService, security: Security
+        self,
+        email_login: EmailLogin,
+        user_service: UserService,
+        email_service: EmailService,
+        security: Security,
     ):
+        email_id: UUID = uuid7()
         user_email: str = email_login.email
         hashed_password: str = await security.hash_password(email_login.password)
 
@@ -121,14 +127,20 @@ class AuthService:
         if existing_user:
             if not existing_user.is_verified:
                 existing_user.hashed_password = hashed_password
-
                 await user_service.update_user(existing_user)
 
-                send_verification_email.delay(
-                    str(uuid4()),
-                    existing_user.email,
-                    str(existing_user.id),
-                    "email_signup",
+                email_db: EmailInDB = EmailInDB(
+                    id=email_id, processed_email=existing_user.email
+                )
+                await email_service.create_email(email_db)
+
+                send_verification_email.apply_async(
+                    priority=5,
+                    kwargs={
+                        "email_id": email_id,
+                        "recipient_email": existing_user.email,
+                        "user_id": str(existing_user.id),
+                    },
                 )
             else:
                 sentry_logger.error("User exists with email {email}", email=user_email)
@@ -141,8 +153,16 @@ class AuthService:
 
             user: User | None = await user_service._get_user_by_email(email=user_email)
 
-            send_verification_email.delay(
-                str(uuid4()), user_email, str(user.id), "email_signup"
+            email_db: EmailInDB = EmailInDB(id=email_id, processed_email=user_email)
+            await email_service.create_email(email_db)
+
+            send_verification_email.apply_async(
+                priority=5,
+                kwargs={
+                    "email_id": email_id,
+                    "recipient_email": user_email,
+                    "user_id": str(user.id),
+                },
             )
 
         sentry_logger.info(
@@ -203,53 +223,53 @@ class AuthService:
         security: Security,
         user_service: UserService,
     ) -> tuple:
-        if saved_state != url_state:
-            raise AuthorizationError()
+        try:
+            if saved_state != url_state:
+                raise AuthorizationError()
 
-        data: dict = {
-            "code": code,
-            "code_verifier": code_verifier,
-            "client_id": self.SETTINGS.GITHUB_CLIENT_ID,
-            "redirect_uri": self.SETTINGS.GITHUB_CALLBACK_URL,
-            "client_secret": self.SETTINGS.GITHUB_CLIENT_SECRET,
-        }
-        headers: dict = {"Accept": "application/json"}
+            data: dict = {
+                "code": code,
+                "code_verifier": code_verifier,
+                "client_id": self.SETTINGS.GITHUB_CLIENT_ID,
+                "redirect_uri": self.SETTINGS.GITHUB_CALLBACK_URL,
+                "client_secret": self.SETTINGS.GITHUB_CLIENT_SECRET,
+            }
+            headers: dict = {"Accept": "application/json"}
 
-        res: Response = await request.post(
-            self.SETTINGS.GITHUB_ACCESS_TOKEN_URL, headers=headers, data=data
-        )
-
-        json_res = res.json()
-
-        if "error" in json_res:
-            raise AuthorizationError()
-
-        access_token: str = json_res["access_token"]
-
-        headers["Authorization"] = f"Bearer {access_token}"
-        profile_res: Response = await request.get(
-            self.SETTINGS.GITHUB_USER_URL, headers=headers
-        )
-
-        user_profile = profile_res.json()
-        user_email: str = user_profile["email"]
-
-        if not user_email:
-            email_res: Response = await request.get(
-                self.SETTINGS.GITHUB_EMAIL_URL, headers=headers
+            res: Response = await request.post(
+                self.SETTINGS.GITHUB_ACCESS_TOKEN_URL, headers=headers, data=data
             )
 
-            user_emails = email_res.json()
-            user_email: dict = next(e for e in user_emails if e["primary"])
+            json_res = res.json()
 
-            if not user_email["verified"]:
-                raise UnverifiedEmailError()
+            if "error" in json_res:
+                raise AuthorizationError()
 
-            user_profile["email"] = user_email["email"]
+            access_token: str = json_res["access_token"]
 
-        user: User = await user_service._get_user_by_email(github_email=user_email)
+            headers["Authorization"] = f"Bearer {access_token}"
+            profile_res: Response = await request.get(
+                self.SETTINGS.GITHUB_USER_URL, headers=headers
+            )
 
-        try:
+            user_profile = profile_res.json()
+            user_email: str = user_profile["email"]
+
+            if not user_email:
+                email_res: Response = await request.get(
+                    self.SETTINGS.GITHUB_EMAIL_URL, headers=headers
+                )
+
+                user_emails = email_res.json()
+                user_email: dict = next(e for e in user_emails if e["primary"])
+
+                if not user_email["verified"]:
+                    raise UnverifiedEmailError()
+
+                user_profile["email"] = user_email["email"]
+
+            user: User = await user_service._get_user_by_email(github_email=user_email)
+
             if not user:
                 user: UserInDB = UserInDB(
                     type="github",
@@ -271,7 +291,16 @@ class AuthService:
                 email=user_profile["email"],
             )
             return access_token, refresh_token
+        except HTTPStatusError as exc:
+            sentry_sdk.capture_exception(exc)
+            sentry_logger.error(
+                "Error occured while making http request. Details: {msg}",
+                msg=exc.response.json(),
+            )
+            raise ServerError() from e
         except Exception as e:
+            sentry_sdk.capture_exception(e)
+            sentry_logger.error("Error occured while signing in with github")
             raise ServerError() from e
 
     async def verify_account(
@@ -330,7 +359,12 @@ class AuthService:
             )
             raise ServerError() from e
 
-    async def resend_otp(self, otp_resend: ResendOtp, user_service: UserService):
+    async def resend_otp(
+        self,
+        otp_resend: ResendOtp,
+        user_service: UserService,
+        email_service: EmailService,
+    ):
         user_email: str = otp_resend.email
 
         existing_user: User | None = await user_service._get_user_by_email(
@@ -347,8 +381,19 @@ class AuthService:
                 {"status": "used"}, user_id=existing_user.id, status="valid"
             )
 
-            send_verification_email.delay(
-                str(uuid4()), user_email, str(existing_user.id), otp_resend.purpose
+            email_id: UUID = uuid7()
+            email_db: EmailInDB = EmailInDB(
+                id=email_id, processed_email=existing_user.email
+            )
+            await email_service.create_email(email_db)
+
+            send_verification_email.apply_async(
+                priority=5,
+                kwargs={
+                    "email_id": email_id,
+                    "recipient_email": user_email,
+                    "user_id": str(existing_user.id),
+                },
             )
 
             sentry_logger.info(

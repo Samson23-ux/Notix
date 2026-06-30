@@ -15,3 +15,9 @@ class RedisRepository:
 
     async def delete_refresh_token(self, key: str):
         await self._async_redis.delete(key)
+
+    def get_processed_email(self, key: str) -> str | None:
+        return self._sync_redis.get(key)
+
+    def mark_email_processed(self, key: str, value: str, ttl: int):
+        self._sync_redis.set(key, value, ex=ttl)

@@ -15,7 +15,9 @@ from app.database.session import get_session
 from app.api.repo.user import UserRepository
 from app.api.services.auth import AuthService
 from app.api.services.user import UserService
+from app.api.repo.email import EmailRepository
 from app.api.repo.redis import RedisRepository
+from app.api.services.email import EmailService
 from app.api.services.channel import EventChannel
 from app.core.exceptions import AuthenticationError
 from app.api.repo.unit_of_work import UnitOfWorkRepository
@@ -82,6 +84,10 @@ async def get_redis_repo(redis: RedisDep) -> RedisRepository:
     return RedisRepository(async_redis=redis)
 
 
+async def get_email_repo(session: DBSession) -> EmailRepository:
+    return EmailRepository(async_session=session)
+
+
 async def get_unit_of_work(session: DBSession) -> UnitOfWorkRepository:
     return UnitOfWorkRepository(session=session)
 
@@ -93,6 +99,7 @@ async def get_notification_repo(session: DBSession) -> NotificationRepository:
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 RedisRepo = Annotated[RedisRepository, Depends(get_redis_repo)]
+EmailRepo = Annotated[EmailRepository, Depends(get_email_repo)]
 UnitOfWorkRepo = Annotated[UnitOfWorkRepository, Depends(get_unit_of_work)]
 NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
 
@@ -102,6 +109,10 @@ NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_re
 
 async def get_user_service(user_repo: UserRepo) -> UserService:
     return UserService(user_repo=user_repo)
+
+
+async def get_email_service(email_repo) -> EmailService:
+    return EmailService(email_repo=email_repo)
 
 
 async def get_auth_service(otp_repo: OtpRepo, redis_repo: RedisRepo) -> AuthService:
@@ -114,6 +125,7 @@ async def get_notification_service(notis_repo: NotificationRepo) -> Notification
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+EmailServiceDep = Annotated[EmailService, Depends(get_email_service)]
 NotificationServiceDep = Annotated[
     NotificationService, Depends(get_notification_service)
 ]

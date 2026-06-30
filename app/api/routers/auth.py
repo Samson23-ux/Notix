@@ -20,6 +20,7 @@ from app.deps import (
     UserServiceDep,
     CurrentActiveUser,
     UnitOfWorkRepo,
+    EmailServiceDep,
 )
 from app.api.schemas.auth import (
     SignUpResponse,
@@ -51,8 +52,11 @@ async def sign_up_with_email(
     email_login: EmailLogin,
     auth_service: AuthServiceDep,
     user_service: UserServiceDep,
+    email_service: EmailServiceDep,
 ):
-    await auth_service.sign_up_with_email(email_login, user_service, security)
+    await auth_service.sign_up_with_email(
+        email_login, user_service, email_service, security
+    )
     return SuccessResponse(
         message=(
             "Sign up completed successfully."
@@ -209,8 +213,9 @@ async def resend_otp(
     otp_resend: ResendOtp,
     auth_service: AuthServiceDep,
     user_service: UserServiceDep,
+    email_service: EmailServiceDep,
 ):
-    await auth_service.resend_otp(otp_resend, user_service)
+    await auth_service.resend_otp(otp_resend, user_service, email_service)
     return SuccessResponse(
         message="OTP sent successfully. Check your email for instructions"
     )
@@ -282,7 +287,9 @@ async def create_new_token(
     "/auth/me",
     status_code=200,
     description="Get current active user",
-    response_model=SuccessResponse[EmailUserResponse | GoogleUserResponse],
+    response_model=SuccessResponse[
+        EmailUserResponse | GoogleUserResponse | GithubUserResponse
+    ],
 )
 @limiter.limit("3/5minute")
 async def get_current_user(
@@ -290,8 +297,8 @@ async def get_current_user(
     curr_user: CurrentActiveUser,
     auth_service: AuthServiceDep,
 ):
-    user: EmailUserResponse | GoogleUserResponse = await auth_service.get_current_user(
-        curr_user
+    user: EmailUserResponse | GoogleUserResponse | GithubUserResponse = (
+        await auth_service.get_current_user(curr_user)
     )
     return SuccessResponse(message="User retrieved successfully", data=user)
 

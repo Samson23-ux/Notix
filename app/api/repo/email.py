@@ -1,0 +1,30 @@
+from typing import Any
+from sqlalchemy import select
+
+
+from app.api.models.email import Email
+from app.api.schemas.email import EmailBase
+from app.api.repo.base import BaseRepository
+
+
+class EmailRepository(BaseRepository[EmailBase, Email]):
+    model = Email
+
+    def get_record(
+        self, **filters
+    ) -> Email | None:
+        filter_conditions: list[Any] = self._get_filters(**filters)
+
+        res = self._sync_session.execute(select(Email).where(*filter_conditions))
+        return res.scalar()
+
+    @staticmethod
+    def _entity_to_model(entity: EmailBase) -> Email:
+        return Email(**entity.model_dump())
+
+    def _get_filters(self, **filters) -> list[Any]:
+        filter_conditions = []
+
+        if "email_id" in filters:
+            filter_conditions.append(self.model.id == filters["email_id"])
+        return filter_conditions

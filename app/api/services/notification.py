@@ -75,11 +75,12 @@ class NotificationService:
                 email=user_email,
             )
 
-            ### send to worker
-
             notification_db: Notification | None = await self._notis_repo.get_record(
                 idempotency_key=idempotency_key
             )
+
+            ### send to worker
+
             return NotificationResponse.model_validate(notification_db)
         except Exception as e:
             await self._notis_repo.rollback()
@@ -122,11 +123,12 @@ class NotificationService:
                 email=user_email,
             )
 
-            ### send to worker
-
             notification_db: Notification | None = await self._notis_repo.get_record(
                 idempotency_key=idempotency_key
             )
+
+            ### send to worker
+
             return NotificationResponse.model_validate(notification_db)
         except Exception as e:
             await self._notis_repo.rollback()
@@ -164,5 +166,20 @@ class NotificationService:
             sentry_logger.error(
                 "Error occured while retrieving notification from db for user {email}",
                 email=user_email,
+            )
+            raise ServerError() from e
+
+    def _get_notification(self, notification_id) -> Notification | None:
+        return self._notis_repo.get_sync_record(id=notification_id)
+
+    def update_notification(self, notification: Notification):
+        try:
+            self._notis_repo.sync_add(model=notification)
+            self._notis_repo.sync_commit()
+        except Exception as e:
+            self._notis_repo.sync_rollback()
+            sentry_sdk.capture_exception(e)
+            sentry_logger.error(
+                "Error occured while updating notification record",
             )
             raise ServerError() from e

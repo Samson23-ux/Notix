@@ -149,7 +149,7 @@ async def async_client(async_session: AsyncSession, test_redis_client: Redis):
 
 @pytest_asyncio.fixture
 async def create_user(async_client: AsyncClient):
-    path: str = "app.api.services.auth_service.send_verification_email.delay"
+    path: str = "app.api.services.auth_service.send_verification_email.apply_async"
 
     sign_up_payload: dict = {
         "email": "user@example.com",
