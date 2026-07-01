@@ -15,7 +15,7 @@ from app.api.repo.user import UserRepository
 from app.api.services.user import UserService
 from app.api.repo.redis import RedisRepository
 from app.api.services.email import EmailService
-from app.task.celery_task import send_verification_email
+from app.worker.tasks.email import send_verification_email
 from app.api.repo.unit_of_work import UnitOfWorkRepository
 from app.api.schemas.user import (
     UserInDB,

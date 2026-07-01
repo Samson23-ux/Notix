@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from starlette.middleware.sessions import SessionMiddleware
 
 
+from app.limiter import limiter
 from app.api.routers import router
 from app.core.config import get_settings
 from app.database.session import redis_client
