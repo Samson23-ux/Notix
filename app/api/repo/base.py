@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from pydantic import BaseModel
+from sqlalchemy import Sequence
 from sqlalchemy.orm import Session
 from abc import ABC, abstractmethod
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +65,12 @@ class BaseRepository(ABC, Generic[Entity, SqlalchemyModel]):
         return []
 
     # sync db queries
+    def get_sync_records(self, **filters) -> Sequence[SqlalchemyModel]:
+        filter_conditions: list[Any] = self._get_filters(**filters)
+
+        res = self._sync_session.execute(select(self.model).where(*filter_conditions))
+        return res.scalars().all()
+
     def get_sync_record(self, **filters) -> SqlalchemyModel | None:
         filter_conditions: list[Any] = self._get_filters(**filters)
 

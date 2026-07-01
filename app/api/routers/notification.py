@@ -3,7 +3,12 @@ from fastapi import APIRouter, Request
 
 
 from app.api.schemas.response import SuccessResponse
-from app.deps import NotificationServiceDep, EvenetChannelDep, CurrentActiveUser
+from app.deps import (
+    NotificationServiceDep,
+    EvenetChannelDep,
+    CurrentActiveUser,
+    WebhookServiceDep,
+)
 from app.api.schemas.notification import (
     EmailNotification,
     WebhookNotification,
@@ -46,12 +51,13 @@ async def create_webhook_notification(
     request: Request,
     curr_user: CurrentActiveUser,
     event_channel: EvenetChannelDep,
+    webhook_service: WebhookServiceDep,
     webhook_payload: WebhookNotification,
     notification_service: NotificationServiceDep,
 ):
     notification: NotificationResponse = (
         await notification_service.create_webhook_notification(
-            event_channel, curr_user, webhook_payload
+            curr_user, event_channel, webhook_payload, webhook_service
         )
     )
     return SuccessResponse(

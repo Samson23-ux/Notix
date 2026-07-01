@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from uuid import UUID
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -88,6 +89,21 @@ class NotificationNotFoundError(AppException):
 
     def __init__(self, id: str):
         self.id = id
+
+
+class UrlNotFoundError(AppException):
+    """Webhook endpoints not found"""
+
+    def __init__(self, url: str = None, id: UUID = None):
+        self.id = id
+        self.url = url
+
+
+class UrlExistsError(AppException):
+    """webhook endpoint exists"""
+
+    def __init__(self, url: str):
+        self.url = url
 
 
 def create_exception_handler(

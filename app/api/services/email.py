@@ -28,7 +28,7 @@ class EmailService:
             raise ServerError() from e
 
     def get_proccessed_email(self, email_id: UUID) -> Email | None:
-        email: Email | None = self._email_repo.get_record(email_id=email_id)
+        email: Email | None = self._email_repo.get_sync_record(email_id=email_id)
         return email
 
     def update_processed_email(self, email: Email):

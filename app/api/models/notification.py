@@ -65,6 +65,7 @@ class Notification(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     faliure_reason: Mapped[str | None] = mapped_column(String)
     retry_count: Mapped[int | None] = mapped_column(Integer)

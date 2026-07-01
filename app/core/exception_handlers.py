@@ -6,9 +6,11 @@ from app.core.exceptions import (
     ServerError,
     AuthenticationError,
     UserExistsError,
+    UrlExistsError,
     InvalidOtpError,
     UserNotFoundError,
     CredentialError,
+    UrlNotFoundError,
     AuthorizationError,
     CheckTimeoutError,
     UnverifiedEmailError,
@@ -151,6 +153,28 @@ class ExceptionHandler:
                 initial_detail={
                     "status": "error",
                     "message": "Notification not found with id {id}",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=UrlNotFoundError,
+            handler=create_exception_handler(
+                status_code=404,
+                initial_detail={
+                    "status": "error",
+                    "message": "Webhook endpoint not found with url {url} or id {id}",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=UrlExistsError,
+            handler=create_exception_handler(
+                status_code=409,
+                initial_detail={
+                    "status": "error",
+                    "message": "Webhook endponts exists with the url {url}",
                 },
             ),
         )

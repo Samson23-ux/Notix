@@ -28,7 +28,7 @@ class UserService:
             return user
         except Exception as e:
             if isinstance(e, UserNotFoundError):
-                raise UserNotFoundError(user_email=user_email)
+                raise UserNotFoundError(user_email=user_email) from e
 
             sentry_sdk.capture_exception(e)
             sentry_logger.error(

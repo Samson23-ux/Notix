@@ -27,11 +27,11 @@ class TestSendNotification:
     async def test_create_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.email"
-        with patch(path, new_callable=MagicMock) as _:
+        path: str = "app.worker.tasks.email.get_email_service"
+        with patch(path, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
-
             notification_payload: dict = get_notification_payload()
+
             res: httpx.Response = await async_client.post(
                 "/notifications",
                 json=notification_payload,
@@ -53,11 +53,11 @@ class TestSendNotification:
     async def test_existing_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.email"
-        with patch(path, new_callable=MagicMock) as _:
+        path: str = "app.worker.tasks.email.get_email_service"
+        with patch(path, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
-
             notification_payload: dict = get_notification_payload()
+
             await async_client.post(
                 "/notifications",
                 json=notification_payload,
@@ -80,10 +80,11 @@ class TestSendNotification:
 
     @pytest.mark.asyncio
     async def test_unauthenticated_notification(self, async_client: httpx.AsyncClient):
-        path: str = "app.worker.tasks.email.email"
-        notification_payload: dict = get_notification_payload()
+        path: str = "app.worker.tasks.email.get_email_service"
 
-        with patch(path, new_callable=MagicMock) as _:
+        with patch(path, new_callable=MagicMock) as email_mock:
+            notification_payload: dict = get_notification_payload()
+
             res: httpx.Response = await async_client.post(
                 "/notifications",
                 json=notification_payload,
@@ -96,7 +97,7 @@ class TestSendNotification:
     async def test_invalid_payload(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.email"
+        path: str = "app.worker.tasks.email.get_email_service"
         with patch(path, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
             notification_payload: dict = get_notification_payload()
@@ -118,9 +119,19 @@ class TestWebhookNotification:
     async def test_create_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.webhook.http_request"
-        with patch(path, new_callable=MagicMock) as _:
+        path: str = "app.worker.tasks.webhook.get_request_service"
+        with patch(path, new_callable=MagicMock) as webhook_mock:
             access_token = login.json()["data"]["access_token"]
+
+            webhook_payload: dict = {"endpoint": "fake-webhook-url"}
+            await async_client.post(
+                "/webhook",
+                json=webhook_payload,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "env": "test",
+                },
+            )
 
             notification_payload: dict = get_webhook_payload()
             res: httpx.Response = await async_client.post(
@@ -144,9 +155,19 @@ class TestWebhookNotification:
     async def test_existing_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.webhook.http_request"
-        with patch(path, new_callable=MagicMock) as _:
+        path: str = "app.worker.tasks.webhook.get_request_service"
+        with patch(path, new_callable=MagicMock) as webhook_mock:
             access_token = login.json()["data"]["access_token"]
+
+            webhook_payload: dict = {"endpoint": "fake-webhook-url"}
+            await async_client.post(
+                "/webhook",
+                json=webhook_payload,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "env": "test",
+                },
+            )
 
             notification_payload: dict = get_webhook_payload()
             await async_client.post(
@@ -174,8 +195,8 @@ class TestGetNotification:
     async def test_get_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.email"
-        with patch(path, new_callable=MagicMock) as _:
+        path: str = "app.worker.tasks.email.get_email_service"
+        with patch(path, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
             notification_payload: dict = get_notification_payload()
 

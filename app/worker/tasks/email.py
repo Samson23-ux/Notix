@@ -1,4 +1,3 @@
-import resend
 import secrets
 import psycopg2
 from uuid import UUID
@@ -11,61 +10,19 @@ from celery.exceptions import MaxRetriesExceededError, Reject
 from app.api.models.email import Email
 from app.core.config import get_settings
 from app.api.schemas.auth import OtpInDB
-from app.api.repo.otp import OtpRepository
-from app.api.services.otp import OtpService
 from app.worker.celery_app import celery_app
-from app.api.repo.user import UserRepository
-from app.api.services.user import UserService
-from app.api.repo.email import EmailRepository
-from app.api.repo.redis import RedisRepository
-from app.api.services.email import EmailService
 from app.api.models.notification import Notification
 from app.worker.tasks.base import BaseTaskWithFailure
-from app.worker.db import get_db_session, get_redis_client
-from app.api.repo.notification import NotificationRepository
-from app.api.services.notification import NotificationService
+from app.worker.tasks.services import (
+    get_redis_repo,
+    get_otp_service,
+    get_email_service,
+    get_notification_service,
+)
 
-TTL = 60 * 60 * 24
-SENDER_EMAIL = get_settings().API_EMAIL
-RESEND_API_KEY = get_settings().RESEND_API_KEY
-
-
-def get_email_service() -> EmailService:
-    session = get_db_session()
-
-    email_service: EmailService = EmailService(
-        email_repo=EmailRepository(sync_session=session)
-    )
-
-    return email_service
-
-
-def get_notification_service() -> NotificationService:
-    session = get_db_session()
-
-    email_service: NotificationService = NotificationService(
-        email_repo=NotificationRepository(sync_session=session)
-    )
-
-    return email_service
-
-
-def get_user_service() -> UserService:
-    session = get_db_session()
-    user_service: UserService = UserService(
-        user_repo=UserRepository(sync_session=session)
-    )
-    return user_service
-
-
-def get_otp_service() -> OtpService:
-    session = get_db_session()
-    otp_service: OtpService = OtpService(otp_repo=OtpRepository(sync_session=session))
-    return otp_service
-
-
-def get_redis_repo() -> RedisRepository:
-    return RedisRepository(sync_redis=get_redis_client())
+SETTINGS = get_settings()
+SENDER_EMAIL = SETTINGS.API_EMAIL
+RESEND_API_KEY = SETTINGS.RESEND_API_KEY
 
 
 def verification_message(otp: str):
@@ -137,9 +94,9 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
                 verification_message(otp),
             )
 
-            redis_repo.mark_email_processed(key, "1", TTL)
+            redis_repo.mark_email_processed(key, "1", SETTINGS.IDEMPOTENCY_KEY_TTL)
 
-            email: Email = email_service.get_proccessed_email(email_id)
+            email: Email = email_service.get_proccessed_email(UUID(email_id))
             email.status = "delivered"
             email.delivered_at = datetime.now(timezone.utc)
             email_service.update_processed_email(email)
@@ -148,7 +105,7 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
                 otp=otp,
                 user_id=UUID(user_id),
                 expires_at=datetime.now(timezone.utc)
-                + timedelta(minutes=get_settings().OTP_EXPIRE_TIME),
+                + timedelta(minutes=SETTINGS().OTP_EXPIRE_TIME),
             )
 
             otp_service.create_otp(otp_payload)
@@ -170,7 +127,6 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
             meta={
                 "record_id": email_id,
                 "type": "verification",
-                "error": type(exc).__name__,
                 "details": str(exc),
                 "retries": self.request.retries,
             },
@@ -185,25 +141,30 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
 
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
 def send_email_task(
-    self, notification_id: str, recipient_email: str, subject: str, body: str
+    self,
+    notification_id: str,
+    idempotency_key: str,
+    recipient_email: str,
+    subject: str,
+    body: str,
 ):
     try:
         redis_repo = get_redis_repo()
         email_service = get_email_service()
         notification_service = get_notification_service()
 
-        key: str = f"idempotency:{notification_id}"
+        key: str = f"idempotency:{idempotency_key}"
         already_processed: str | None = redis_repo.get_processed_email(key)
 
         notification: Notification = notification_service._get_notification(
-            notification_id
+            UUID(notification_id)
         )
 
         if not already_processed:
             email_service.api_key = RESEND_API_KEY
             email_service.send(SENDER_EMAIL, recipient_email, subject, body)
 
-            redis_repo.mark_email_processed(key, "1", TTL)
+            redis_repo.mark_email_processed(key, "1", SETTINGS.IDEMPOTENCY_KEY_TTL)
 
             notification.status = "delivered"
             notification.delivered_at = datetime.now(timezone.utc)
@@ -227,7 +188,6 @@ def send_email_task(
             meta={
                 "record_id": notification_id,
                 "type": "notification",
-                "error": type(exc).__name__,
                 "details": str(exc),
                 "retries": self.request.retries,
             },
@@ -243,25 +203,30 @@ def send_email_task(
 
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
 def send_critical_email_task(
-    self, notification_id: str, recipient_email: str, subject: str, body: str
+    self,
+    notification_id: str,
+    idempotency_key: str,
+    recipient_email: str,
+    subject: str,
+    body: str,
 ):
     try:
         redis_repo = get_redis_repo()
         email_service = get_email_service()
         notification_service = get_notification_service()
 
-        key: str = f"idempotency:{notification_id}"
+        key: str = f"idempotency:{idempotency_key}"
         already_processed: str | None = redis_repo.get_processed_email(key)
 
         notification: Notification = notification_service._get_notification(
-            notification_id
+            UUID(notification_id)
         )
 
         if not already_processed:
             email_service.api_key = RESEND_API_KEY
             email_service.send(SENDER_EMAIL, recipient_email, subject, body)
 
-            redis_repo.mark_email_processed(key, "1", TTL)
+            redis_repo.mark_email_processed(key, "1", SETTINGS.IDEMPOTENCY_KEY_TTL)
 
             notification.status = "delivered"
             notification.delivered_at = datetime.now(timezone.utc)
@@ -285,7 +250,6 @@ def send_critical_email_task(
             meta={
                 "record_id": notification_id,
                 "type": "notification",
-                "error": type(exc).__name__,
                 "details": str(exc),
                 "retries": self.request.retries,
             },

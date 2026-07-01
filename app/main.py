@@ -30,20 +30,18 @@ async def create_exchange_and_queue(channel: EventChannel):
     dlqs = SETTINGS.BROKER_DLQ
     queues = SETTINGS.BROKER_QUEUE
 
-    dlq_exchange = await channel.create_exchange("notix.dlx", durable=True)
-    queue_exchange = await channel.create_exchange("notix.direct", durable=True)
+    dlq_exchange = await channel.create_exchange("notix.dlx")
+    queue_exchange = await channel.create_exchange("notix.direct")
 
     for n, rk in dlqs:
-        await channel.bind_queue(dlq_exchange, n, rk, durable=True)
+        await channel.bind_queue(dlq_exchange, n, rk)
 
     for n, rk in queues:
         await channel.bind_queue(
             queue_exchange,
             n,
             rk,
-            durable=True,
-            x_max_priority=10,
-            x_dead_letter_exchange="notix.dlx",
+            arguments={"x_max_priority": 10, "x_dead_letter_exchange": "notix.dlx"},
         )
 
 
@@ -61,7 +59,9 @@ async def lifespan(app: FastAPI):
     )
 
     event_channel = EventChannel(SETTINGS.BROKER_URL)
+    await event_channel.connect_async()
     await create_exchange_and_queue(event_channel)
+
     app.state.channel = event_channel
 
     yield

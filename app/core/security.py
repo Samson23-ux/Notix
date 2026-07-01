@@ -1,4 +1,5 @@
 import os
+import hmac
 import json
 import base64
 import hashlib
@@ -22,7 +23,6 @@ class Security:
         self.oauth: OAuth = OAuth()
         self.arg2_hasher = Argon2Hasher()
 
-
     async def register_oath(self):
         self.oauth.register(
             name="google",
@@ -34,11 +34,17 @@ class Security:
             },
         )
 
-    async def get_code_verifier():
+    def sign_payload(self, secret: str, payload: dict):
+        signature: str = hmac.new(
+            secret.encode(), msg=json.dumps(payload).encode(), digestmod=hashlib.sha256
+        ).hexdigest()
+        return signature
+
+    async def get_code_verifier(self):
         return base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")[:43]
 
-    async def hash_code_challenge(verifier: str):
-        digest = hashlib.sha256(verifier.encode(encoding="utf-8")).digest()
+    async def hash_code_challenge(self, verifier: str):
+        digest = hashlib.sha256(verifier.encode(encoding="utf-8")).hexdigest()
         return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
     async def encode_cursor(self, payload: dict) -> str:
@@ -56,7 +62,7 @@ class Security:
             if cursor_payload["order"] != curr_order.lower():
                 return
             return cursor_payload
-        except (json.JSONDecodeError, UnicodeDecodeError, binascii_error):
+        except json.JSONDecodeError, UnicodeDecodeError, binascii_error:
             return
 
     async def hash_password(self, password: str) -> str:
@@ -102,7 +108,9 @@ class Security:
                 days=self.SETTINGS.REFRESH_TOKEN_EXPIRE_TIME
             )
         else:
-            expire_time: datetime = datetime.now(timezone.utc) + timedelta(days=expire_time)
+            expire_time: datetime = datetime.now(timezone.utc) + timedelta(
+                days=expire_time
+            )
 
         payload: dict = {
             "sub": token_data.email,
@@ -132,10 +140,11 @@ class Security:
         except JWTError:
             return
 
-
     async def prepare_tokens(self, token_data: TokenData):
         access_token: str = await self.create_access_token(token_data)
-        refresh_token, refresh_token_id, user_type = await self.create_refresh_token(token_data)
+        refresh_token, refresh_token_id, user_type = await self.create_refresh_token(
+            token_data
+        )
 
         refresh_token_expire_time: int = (
             get_settings().REFRESH_TOKEN_EXPIRE_TIME * 24 * 3600
