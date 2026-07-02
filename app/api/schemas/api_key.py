@@ -3,23 +3,17 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
-class WebhookBase(BaseModel):
+class ApiKeyBase(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
 
-    endpoint: str
+    key: str
 
 
-class Webhook(WebhookBase):
-    pass
-
-
-class WebhookInDB(WebhookBase):
+class ApiKey(ApiKeyBase):
     user_id: UUID
-    secret: str
 
 
-class WebhookResponse(WebhookBase):
+class ApiKeyResponse(ApiKeyBase):
     id: UUID
     user_id: UUID
-    secret: str
     created_at: datetime

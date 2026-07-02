@@ -19,6 +19,8 @@ from app.api.repo.email import EmailRepository
 from app.api.repo.redis import RedisRepository
 from app.api.services.email import EmailService
 from app.api.services.channel import EventChannel
+from app.api.repo.api_key import ApiKeyRepository
+from app.api.services.api_key import ApiKeyService
 from app.api.repo.webhook import WebhookRepository
 from app.api.services.webhook import WebhookService
 from app.core.exceptions import AuthenticationError
@@ -94,6 +96,10 @@ async def get_email_repo(session: DBSession) -> EmailRepository:
     return EmailRepository(async_session=session)
 
 
+async def get_api_key_repo(session: DBSession) -> ApiKeyRepository:
+    return ApiKeyRepository(async_session=session)
+
+
 async def get_unit_of_work(session: DBSession) -> UnitOfWorkRepository:
     return UnitOfWorkRepository(session=session)
 
@@ -106,6 +112,7 @@ OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 RedisRepo = Annotated[RedisRepository, Depends(get_redis_repo)]
 EmailRepo = Annotated[EmailRepository, Depends(get_email_repo)]
+ApiKeyRepo = Annotated[ApiKeyRepository, Depends(get_api_key_repo)]
 WebhookRepo = Annotated[WebhookRepository, Depends(get_webhook_repo)]
 UnitOfWorkRepo = Annotated[UnitOfWorkRepository, Depends(get_unit_of_work)]
 NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
@@ -122,6 +129,10 @@ async def get_email_service(email_repo: EmailRepo) -> EmailService:
     return EmailService(email_repo=email_repo)
 
 
+async def get_api_key_service(api_key_repo: ApiKeyRepo) -> ApiKeyService:
+    return ApiKeyService(api_key_repo=api_key_repo)
+
+
 async def get_webhook_service(webhook_repo: WebhookRepo) -> WebhookService:
     return WebhookService(webhook_repo=webhook_repo)
 
@@ -136,6 +147,7 @@ async def get_notification_service(notis_repo: NotificationRepo) -> Notification
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+ApiKeyServiceDep = Annotated[ApiKeyService, Depends(get_api_key_service)]
 EmailServiceDep = Annotated[EmailService, Depends(get_email_service)]
 WebhookServiceDep = Annotated[WebhookService, Depends(get_webhook_service)]
 NotificationServiceDep = Annotated[

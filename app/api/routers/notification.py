@@ -1,5 +1,6 @@
 from uuid import UUID
-from fastapi import APIRouter, Request
+from typing import Annotated
+from fastapi import APIRouter, Request, Header
 
 
 from app.api.schemas.response import SuccessResponse
@@ -26,6 +27,7 @@ router = APIRouter()
 )
 async def create_notification(
     request: Request,
+    api_key: Annotated[str, Header()],
     curr_user: CurrentActiveUser,
     event_channel: EvenetChannelDep,
     notification_payload: EmailNotification,
@@ -33,7 +35,7 @@ async def create_notification(
 ):
     notification: NotificationResponse = (
         await notification_service.create_email_notification(
-            event_channel, curr_user, notification_payload
+            api_key, event_channel, curr_user, notification_payload
         )
     )
     return SuccessResponse(
@@ -51,13 +53,14 @@ async def create_webhook_notification(
     request: Request,
     curr_user: CurrentActiveUser,
     event_channel: EvenetChannelDep,
+    api_key: Annotated[str, Header()],
     webhook_service: WebhookServiceDep,
     webhook_payload: WebhookNotification,
     notification_service: NotificationServiceDep,
 ):
     notification: NotificationResponse = (
         await notification_service.create_webhook_notification(
-            curr_user, event_channel, webhook_payload, webhook_service
+            api_key, curr_user, event_channel, webhook_payload, webhook_service
         )
     )
     return SuccessResponse(

@@ -11,7 +11,7 @@ from app.api.repo.email import EmailRepository
 from app.api.repo.redis import RedisRepository
 from app.api.services.email import EmailService
 from app.api.services.channel import EventChannel
-from app.worker.db import get_db_session, get_redis_client
+from app.worker import get_db_session, get_redis_client
 from app.api.repo.notification import NotificationRepository
 from app.api.services.notification import NotificationService
 

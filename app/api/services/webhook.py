@@ -4,6 +4,7 @@ from uuid import UUID
 import sentry_sdk.logger as sentry_logger
 
 
+from app.util import get_user_email
 from app.api.models.user import User
 from app.api.models.webhook import WebhookEndpoint
 from app.api.repo.webhook import WebhookRepository
@@ -15,16 +16,6 @@ class WebhookService:
     def __init__(self, webhook_repo: WebhookRepository):
         self._webhook_repo = webhook_repo
 
-    def _get_user_email(self, user: User) -> str:
-        if user.type == "email":
-            user_email: str = user.email
-        elif user.type == "github":
-            user_email: str = user.github_email
-        else:
-            user_email: str = user.google_email
-
-        return user_email
-
     async def _get_endpoint(self, user_id: UUID, url: str) -> WebhookEndpoint | None:
         return self._webhook_repo.get_record(user_id=user_id, endpoint=url)
 
@@ -33,7 +24,7 @@ class WebhookService:
     ) -> WebhookResponse:
         url: str = payload.endpoint
         user_id: UUID = curr_user.id
-        user_email: str = self._get_user_email(curr_user)
+        user_email: str = get_user_email(curr_user)
 
         webhook_exists: WebhookEndpoint | None = await self._webhook_repo.get_record(
             user_id=user_id, endpoint=url
@@ -76,7 +67,7 @@ class WebhookService:
 
     async def delete_endpoint(self, curr_user: User, endpoint_id: UUID):
         user_id: UUID = curr_user.id
-        user_email: str = self._get_user_email(curr_user)
+        user_email: str = get_user_email(curr_user)
 
         try:
             webhook: WebhookEndpoint | None = await self._webhook_repo.get_record(

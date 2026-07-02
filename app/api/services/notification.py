@@ -4,15 +4,14 @@ from sqlalchemy import Sequence
 import sentry_sdk.logger as sentry_logger
 
 
+from app.util import get_user_email
 from app.api.models.user import User
 from app.core.config import get_settings
 from app.api.services.channel import EventChannel
 from app.api.models.webhook import WebhookEndpoint
 from app.api.services.webhook import WebhookService
 from app.api.models.notification import Notification
-from app.worker.tasks.webhook import deliver_webhook_task
 from app.api.repo.notification import NotificationRepository
-from app.worker.tasks.email import send_email_task, send_critical_email_task
 from app.api.schemas.notification import (
     EmailNotification,
     WebhookNotification,
@@ -24,6 +23,7 @@ from app.core.exceptions import (
     ServiceUnavailable,
     NotificationExistsError,
     NotificationNotFoundError,
+    ApiKeyMissingError,
 )
 
 
@@ -47,25 +47,25 @@ class NotificationService:
         "medium": 5,
     }
 
-    def _get_user_email(self, user: User) -> str:
-        if user.type == "email":
-            user_email: str = user.email
-        elif user.type == "github":
-            user_email: str = user.github_email
-        else:
-            user_email: str = user.google_email
-
-        return user_email
-
     async def create_email_notification(
-        self, channel: EventChannel, curr_user: User, payload: EmailNotification
+        self,
+        api_key: str,
+        channel: EventChannel,
+        curr_user: User,
+        payload: EmailNotification,
     ) -> NotificationResponse:
+        from app.worker.tasks.email import send_email_task, send_critical_email_task
+
         type: str = payload.type.lower()
         priority: str = payload.priority.lower()
         idempotency_key: str = payload.idempotency_key
 
-        user_email: str = self._get_user_email(curr_user)
+        user_email: str = get_user_email(curr_user)
         queue: str = self.QUEUE_MAP.get(priority, "notix.standard")
+
+        if not api_key:
+            sentry_logger.error("Api Key not set by user {email}", email=user_email)
+            raise ApiKeyMissingError()
 
         notification_db: Notification | None = await self._notis_repo.get_record(
             idempotency_key=idempotency_key
@@ -133,16 +133,23 @@ class NotificationService:
 
     async def create_webhook_notification(
         self,
+        api_key: str,
         curr_user: User,
         channel: EventChannel,
         payload: WebhookNotification,
         webhook_service: WebhookService,
     ) -> NotificationResponse:
+        from app.worker.tasks.webhook import deliver_webhook_task
+
         url: str = payload.webhook_url
         idempotency_key: str = payload.idempotency_key
 
-        user_email: str = self._get_user_email(curr_user)
+        user_email: str = get_user_email(curr_user)
         queue: str = self.QUEUE_MAP.get(payload.priority, "notix.standard")
+
+        if not api_key:
+            sentry_logger.error("Api Key not set by user {email}", email=user_email)
+            raise ApiKeyMissingError()
 
         notification_db: Notification | None = await self._notis_repo.get_record(
             idempotency_key=idempotency_key
@@ -189,7 +196,7 @@ class NotificationService:
                     "secret": webhook.secret,
                     "webhook_url": url,
                     "payload": payload.payload,
-                }
+                },
             )
 
             return NotificationResponse.model_validate(notification_db)
@@ -205,7 +212,7 @@ class NotificationService:
     async def get_notification(
         self, notification_id: UUID, curr_user: User
     ) -> NotificationResponse:
-        user_email: str = self._get_user_email(curr_user)
+        user_email: str = get_user_email(curr_user)
 
         try:
             notification_db: Notification | None = await self._notis_repo.get_record(

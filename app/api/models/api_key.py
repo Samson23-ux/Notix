@@ -29,6 +29,5 @@ class ApiKey(Base):
 
     __table_args__ = (
         PrimaryKeyConstraint("id", name="api_keys_pk"),
-        Index("idx_api_keys_user_id", user_id),
-        Index("idx_api_keys_key", key),
+        Index("idx_api_keys", key, user_id),
     )

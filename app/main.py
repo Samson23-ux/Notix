@@ -10,10 +10,14 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.limiter import limiter
 from app.api.routers import router
+from app.core.security import Security
 from app.core.config import get_settings
 from app.database.session import redis_client
 from app.api.services.channel import EventChannel
+from app.core.exception_handlers import ExceptionHandler
 
+
+SECURITY = Security()
 SETTINGS = get_settings()
 
 
@@ -52,6 +56,7 @@ async def raise_for_5xx(response):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await SECURITY.register_oauth()
     app.state.redis = redis_client
     app.state.client = AsyncClient(
         base_url="http://localhost/api/v1",
@@ -95,6 +100,9 @@ app.add_middleware(
     secret_key=SETTINGS.SESSION_SECRET_KEY,
     https_only=SETTINGS.ENVIRONMENT == "production",
 )
+
+exception_handler = ExceptionHandler(app)
+exception_handler.add_handlers()
 
 
 @app.get("/", status_code=200)

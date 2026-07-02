@@ -87,7 +87,7 @@ class NotificationExistsError(AppException):
 class NotificationNotFoundError(AppException):
     """Notification not found"""
 
-    def __init__(self, id: str):
+    def __init__(self, id: UUID):
         self.id = id
 
 
@@ -104,6 +104,25 @@ class UrlExistsError(AppException):
 
     def __init__(self, url: str):
         self.url = url
+
+
+class ApiKeysNotFoundError(AppException):
+    """Api Key not found"""
+
+    pass
+
+
+class ApiKeyNotFoundError(AppException):
+    """Api Key not found"""
+
+    def __init__(self, key: str):
+        self.key = key
+
+
+class ApiKeyMissingError(AppException):
+    """Api Key not set in header"""
+
+    pass
 
 
 def create_exception_handler(

@@ -11,7 +11,7 @@ from app.api.models.notification import (
 
 
 class NotificationBase(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
 
     idempotency_key: str
     type: NotificationType

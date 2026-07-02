@@ -1,3 +1,6 @@
+import json
+import base64
+import itsdangerous
 import pytest_asyncio
 from uuid import uuid7
 from sqlalchemy import text
@@ -22,8 +25,9 @@ from app.api.models.otp import Otp
 from app.api.models.base import Base
 from app.core.config import get_settings
 from app.api import models  # noqa: F401
-from app.api.repo.redis import RedisRepository
+from app.api.services.request import Request
 from app.api.services.auth import AuthService
+from app.api.repo.redis import RedisRepository
 from app.deps import get_session, get_auth_service, get_redis_client, get_request
 
 
@@ -110,12 +114,12 @@ async def flush_redis(test_redis_client: Redis):
 def get_request_mock():
     fake_github_token: dict = {"access_token": "fakeaccesstoken"}
     user_profile: dict = {
+        "id": "fake_github_id",
         "email": "fakeadmin@example.com",
-        "github_id": "fake_github_id",
     }
 
-    request = MagicMock()
     token_response = MagicMock()
+    request = MagicMock(spec=Request)
     user_profile_response = MagicMock()
 
     token_response.json.return_value = fake_github_token
@@ -149,7 +153,7 @@ async def async_client(async_session: AsyncSession, test_redis_client: Redis):
 
 @pytest_asyncio.fixture
 async def create_user(async_client: AsyncClient):
-    path: str = "app.api.services.auth_service.send_verification_email.apply_async"
+    path: str = "app.api.services.auth.send_verification_email.apply_async"
 
     sign_up_payload: dict = {
         "email": "user@example.com",
@@ -186,7 +190,6 @@ async def verify_user(
         id=uuid7(),
         otp="test_otp_token",
         user_id=uuid7(),
-        purpose="email_signup",
         status="valid",
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
     )
@@ -234,7 +237,7 @@ async def sign_in_with_github(async_client: AsyncClient):
 
     session_cookie = sign_in_res.cookies.get("session")
 
-    signer = itsdangerous.TimestampSigner(settings.SESSION_SECRET_KEY)
+    signer = itsdangerous.TimestampSigner(get_settings().SESSION_SECRET_KEY)
     data = signer.unsign(session_cookie)
     client_data: dict = json.loads(base64.b64decode(data))["client_data"]
 

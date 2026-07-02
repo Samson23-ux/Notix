@@ -1,8 +1,8 @@
 from sentry_sdk import logger as sentry_logger
 
 
-from app.worker.celery_app import celery_app
-from app.worker.tasks.services import get_event_channel
+from app.worker import celery_app
+from app.worker import get_event_channel
 
 
 @celery_app.task

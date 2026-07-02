@@ -6,12 +6,12 @@ from resend.exceptions import ResendError
 from celery.exceptions import MaxRetriesExceededError, Reject
 
 
+from app.worker import celery_app
 from app.core.security import Security
 from app.core.config import get_settings
-from app.worker.celery_app import celery_app
+from app.worker import BaseTaskWithFailure
 from app.api.models.notification import Notification
-from app.worker.tasks.base import BaseTaskWithFailure
-from app.worker.tasks.services import (
+from app.worker import (
     get_redis_repo,
     get_request_service,
     get_notification_service,

@@ -3,11 +3,9 @@ from celery.result import AsyncResult
 from datetime import datetime, timezone
 
 
+from app.worker import celery_app
 from app.api.models.email import Email
-from app.worker.celery_app import celery_app
 from app.api.models.notification import Notification
-from app.worker.tasks.services import get_notification_service, get_email_service
-
 
 class BaseTaskWithFailure(celery_app.Task):
     # maximum retry value
@@ -31,6 +29,8 @@ class BaseTaskWithFailure(celery_app.Task):
     retry_backoff_max = 600
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
+        from app.worker import get_notification_service, get_email_service
+
         try:
             email_service = get_email_service()
             notification_service = get_notification_service()

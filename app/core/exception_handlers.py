@@ -17,6 +17,9 @@ from app.core.exceptions import (
     ServiceUnavailable,
     NotificationExistsError,
     NotificationNotFoundError,
+    ApiKeyMissingError,
+    ApiKeyNotFoundError,
+    ApiKeysNotFoundError,
 )
 
 
@@ -175,6 +178,39 @@ class ExceptionHandler:
                 initial_detail={
                     "status": "error",
                     "message": "Webhook endponts exists with the url {url}",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=ApiKeysNotFoundError,
+            handler=create_exception_handler(
+                status_code=404,
+                initial_detail={
+                    "status": "error",
+                    "message": "No Api Key found at the moment",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=ApiKeyNotFoundError,
+            handler=create_exception_handler(
+                status_code=404,
+                initial_detail={
+                    "status": "error",
+                    "message": "No Api Key found with the key {key}",
+                },
+            ),
+        )
+
+        self._app.add_exception_handler(
+            exc_class_or_status_code=ApiKeyMissingError,
+            handler=create_exception_handler(
+                status_code=404,
+                initial_detail={
+                    "status": "error",
+                    "message": "Api Key missing!",
                 },
             ),
         )

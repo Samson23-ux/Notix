@@ -23,11 +23,11 @@ class Security:
         self.oauth: OAuth = OAuth()
         self.arg2_hasher = Argon2Hasher()
 
-    async def register_oath(self):
+    async def register_oauth(self):
         self.oauth.register(
             name="google",
-            client_id=self.SETTINGS.CLIENT_ID,
-            client_secret=self.SETTINGS.CLIENT_SECRET,
+            client_id=self.SETTINGS.GOOGLE_CLIENT_ID,
+            client_secret=self.SETTINGS.GITHUB_CLIENT_SECRET,
             server_metadata_url=self.SETTINGS.GOOGLE_OAUTH_URL,
             client_kwargs={
                 "scope": "openid email",
@@ -44,7 +44,7 @@ class Security:
         return base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")[:43]
 
     async def hash_code_challenge(self, verifier: str):
-        digest = hashlib.sha256(verifier.encode(encoding="utf-8")).hexdigest()
+        digest = hashlib.sha256(verifier.encode(encoding="utf-8")).digest()
         return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
     async def encode_cursor(self, payload: dict) -> str:

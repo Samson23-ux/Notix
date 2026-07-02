@@ -6,8 +6,9 @@ from fastapi import APIRouter, Request, Response, Query
 
 from app.limiter import limiter
 from app.core.config import get_settings
+from app.api.schemas.api_key import ApiKeyResponse
 from app.core.exceptions import AuthorizationError
-from app.api.schemas.response import SuccessResponse
+from app.api.schemas.response import SuccessResponse, AllSuccessResponse
 from app.api.schemas.user import (
     GoogleUserResponse,
     EmailUserResponse,
@@ -21,6 +22,7 @@ from app.deps import (
     CurrentActiveUser,
     UnitOfWorkRepo,
     EmailServiceDep,
+    ApiKeyServiceDep,
 )
 from app.api.schemas.auth import (
     SignUpResponse,
@@ -30,7 +32,6 @@ from app.api.schemas.auth import (
     ResendOtp,
     OtpResendResponse,
     LogoutResponse,
-    ApiKeyResponse,
 )
 
 router = APIRouter()
@@ -140,7 +141,7 @@ async def sign_in(request: Request, security: SecurityDep):
 @router.get(
     "/auth/github/callback",
     status_code=200,
-    response_model=Token,
+    response_model=SuccessResponse[Token],
     description="Github callback url",
 )
 @limiter.limit("10/minute")
@@ -264,10 +265,13 @@ async def login(
 async def create_new_token(
     request: Request,
     response: Response,
+    security: SecurityDep,
     auth_service: AuthServiceDep,
 ):
     refresh_token: str = request.cookies.get("refresh_token")
-    access_token, refresh_token = await auth_service.create_auth_tokens(refresh_token)
+    access_token, refresh_token = await auth_service.create_auth_tokens(
+        refresh_token, security
+    )
 
     expire_time: int = get_settings().REFRESH_TOKEN_EXPIRE_TIME * 24 * 3600
 
@@ -326,12 +330,13 @@ async def log_out(
 @limiter.limit("3/5minute")
 async def delete_account(
     request: Request,
+    security: SecurityDep,
     curr_user: CurrentActiveUser,
     auth_service: AuthServiceDep,
     user_service: UserServiceDep,
 ):
     refresh_token: str = request.cookies.get("refresh_token")
-    await auth_service.delete_account(curr_user, user_service, refresh_token)
+    await auth_service.delete_account(curr_user, user_service, refresh_token, security)
 
 
 @router.post(
@@ -344,30 +349,34 @@ async def delete_account(
 async def create_api_key(
     request: Request,
     curr_user: CurrentActiveUser,
-    auth_service: AuthServiceDep,
+    api_key_service: ApiKeyServiceDep,
 ):
-    api_key: ApiKeyResponse = await auth_service.create_api_key(curr_user)
+    api_key: ApiKeyResponse = await api_key_service.create_api_key(curr_user)
     return SuccessResponse(message="Api key created successfully", data=api_key)
 
 
 @router.get(
     "/auth/keys",
     status_code=200,
-    response_model=SuccessResponse[ApiKeyResponse],
+    response_model=AllSuccessResponse[ApiKeyResponse],
     description="Get all created keys",
 )
 @limiter.limit("3/5minute")
 async def get_all_api_keys(
     request: Request,
     curr_user: CurrentActiveUser,
-    auth_service: AuthServiceDep,
+    api_key_service: ApiKeyServiceDep,
     sort: Annotated[str, Query(description="Sort by created_at")] = None,
     order: Annotated[str, Query(description="Order in asc or desc")] = "asc",
     cursor: Annotated[str, Query()] = None,
     limit: Annotated[int, Query()] = 10,
 ):
-    api_key: list[ApiKeyResponse] = await auth_service.get_all_api_keys(curr_user)
-    return SuccessResponse(message="Api keys retrieved successfully", data=api_key)
+    api_key, cursor = await api_key_service.get_all_api_keys(
+        curr_user, sort, order, cursor, limit
+    )
+    return AllSuccessResponse(
+        message="Api keys retrieved successfully", data=api_key, cursor=cursor
+    )
 
 
 @router.get(
@@ -381,9 +390,9 @@ async def get_api_key(
     key: str,
     request: Request,
     curr_user: CurrentActiveUser,
-    auth_service: AuthServiceDep,
+    api_key_service: ApiKeyServiceDep,
 ):
-    api_key: ApiKeyResponse = await auth_service.get_api_key(curr_user, key)
+    api_key: ApiKeyResponse = await api_key_service.get_api_key(curr_user, key)
     return SuccessResponse(message="Api key retrieved successfully", data=api_key)
 
 
@@ -398,6 +407,6 @@ async def delete_api_key(
     request: Request,
     security: SecurityDep,
     curr_user: CurrentActiveUser,
-    auth_service: AuthServiceDep,
+    api_key_service: ApiKeyServiceDep,
 ):
-    await auth_service.delete_api_key(curr_user, key)
+    await api_key_service.delete_api_key(curr_user, key)

@@ -1,6 +1,44 @@
 import httpx
 import pytest
-from unittest.mock import patch, AsyncMock
+import secrets
+from uuid import uuid4
+from datetime import datetime, timedelta
+from unittest.mock import patch, AsyncMock, MagicMock
+
+
+from app.main import app
+from app.deps import get_security
+from app.core.security import Security
+
+
+def get_security_mock():
+    payload: dict = {
+        "sub": "randomfakeid",
+        "email": "user@example.com",
+    }
+
+    refresh_token_payload: dict = {
+        "email": "user@example.com",
+        "user_type": "google",
+        "refresh_token_id": str(uuid4()),
+        "refresh_token": secrets.token_urlsafe(32),
+        "refresh_token_expire_time": (datetime.now() + timedelta(days=1)).isoformat(),
+    }
+
+    token: dict = {"userinfo": payload}
+    access_token: str = secrets.token_urlsafe(32)
+
+    security = MagicMock(
+        spec=Security()
+    )  # pass an instance of the Security class to register instance attributes
+
+    security.oauth.google.authorize_redirect = AsyncMock(return_value=None)
+    security.oauth.google.authorize_access_token = AsyncMock(return_value=token)
+    security.prepare_tokens = AsyncMock(
+        return_value=(access_token, refresh_token_payload)
+    )
+
+    return security
 
 
 class TestSignUpWithEmail:
@@ -89,16 +127,10 @@ class TestLogin:
 class TestSignUpWithGoogle:
     @pytest.mark.asyncio
     async def test_sign_in_google(self, async_client: httpx.AsyncClient):
-        url_path: str = "app.api.routers.auth.Request.url_for"
-        token_path: str = (
-            "app.api.routers.auth.security.oauth.google.authorize_redirect"
-        )
+        app.dependency_overrides[get_security] = lambda: get_security_mock()
 
-        with (
-            patch(url_path, new_callable=AsyncMock) as url_patch,
-            patch(token_path, new_callable=AsyncMock) as token_patch,
-        ):
-            token_patch.return_value = None
+        url_path: str = "app.api.routers.auth.Request.url_for"
+        with patch(url_path, new_callable=AsyncMock) as url_patch:
             res: httpx.Response = await async_client.get(
                 "/auth/google", headers={"env": "test"}
             )
@@ -106,41 +138,26 @@ class TestSignUpWithGoogle:
         assert res.status_code == 302
 
         url_patch.assert_called_once()
-        token_patch.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_google_callback(self, async_client: httpx.AsyncClient):
-        payload: dict = {
-            "sub": "randomfakeid",
-            "email": "user@example.com",
-        }
+        app.dependency_overrides[get_security] = lambda: get_security_mock()
 
-        token: dict = {"userinfo": payload}
-
-        token_path: str = (
-            "app.api.routers.auth.security.oauth.google.authorize_access_token"
+        res: httpx.Response = await async_client.get(
+            "/auth/google/callback", headers={"env": "test"}
         )
-
-        with patch(token_path, new_callable=AsyncMock) as token_patch:
-            token_patch.return_value = token
-
-            res: httpx.Response = await async_client.get(
-                "/auth/google/callback", headers={"env": "test"}
-            )
 
         json_res = res.json()
 
         assert res.status_code == 200
-        assert "access_token" in json_res
-
-        token_patch.assert_called_once()
+        assert "access_token" in json_res["data"]
 
 
 class TestSignUpWithGithub:
     @pytest.mark.asyncio
     async def test_successful_sign_in(self, sign_in_with_github: httpx.Response):
         assert sign_in_with_github.status_code == 200
-        assert "access_token" in sign_in_with_github.json()
+        assert "access_token" in sign_in_with_github.json()["data"]
 
     @pytest.mark.asyncio
     async def test_invalid_state(self, async_client: httpx.AsyncClient):
@@ -149,6 +166,8 @@ class TestSignUpWithGithub:
             f"/auth/github/callback?code=fakegithubcode&state={state}",
             headers={"env": "testing"},
         )
+
+        assert res.status_code == 403
 
 
 class TestAuthToken:
@@ -212,7 +231,7 @@ class TestResendOtp:
     async def test_resend_otp_token(
         self, async_client: httpx.AsyncClient, create_user: httpx.Response
     ):
-        path: str = "app.api.services.auth_service.send_verification_email.apply_async"
+        path: str = "app.api.services.auth.send_verification_email.apply_async"
 
         resend_otp_payload: dict = {
             "email": "user@example.com",
@@ -324,7 +343,7 @@ class TestApiKey:
         api_key: str = create_res.json()["data"]["key"]
 
         res: httpx.Response = await async_client.get(
-            "/auth/keys",
+            f"/auth/keys/{api_key}",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "env": "test",
@@ -343,7 +362,7 @@ class TestApiKey:
         access_token = login.json()["data"]["access_token"]
 
         res: httpx.Response = await async_client.get(
-            "/auth/keys",
+            "/auth/keys/fftdff6ghj",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "env": "test",
@@ -358,7 +377,7 @@ class TestApiKey:
     ):
         access_token = login.json()["data"]["access_token"]
 
-        await async_client.post(
+        create_res: httpx.Response = await async_client.post(
             "/auth/keys",
             headers={
                 "Authorization": f"Bearer {access_token}",
@@ -366,8 +385,10 @@ class TestApiKey:
             },
         )
 
+        api_key: str = create_res.json()["data"]["key"]
+
         res: httpx.Response = await async_client.delete(
-            "/auth/keys",
+            f"/auth/keys/{api_key}",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "env": "test",
