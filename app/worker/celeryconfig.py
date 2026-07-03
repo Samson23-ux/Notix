@@ -1,3 +1,4 @@
+from kombu import Queue
 from celery.schedules import crontab
 
 task_acks_late = True
@@ -5,6 +6,20 @@ worker_concurrency = 100
 timezone = "Africa/Lagos"
 reject_on_worker_lost = True
 worker_prefetch_multiplier = 1
+
+queue_args = {
+    "x-max-priority": 10,
+    "x-dead-letter-routing-key": "dlq",
+    "x-dead-letter-exchange": "notix.dlx",
+}
+
+task_queues = (
+    Queue("notix.dlq", "notix.dlx", "dlq"),
+    Queue("notix.high", "notix.direct", "high", queue_arguments=queue_args),
+    Queue("notix.batch", "notix.direct", "batch", queue_arguments=queue_args),
+    Queue("notix.webhook", "notix.direct", "webhook", queue_arguments=queue_args),
+    Queue("notix.standard", "notix.direct", "standard", queue_arguments=queue_args),
+)
 
 task_routes = {
     "app.worker.tasks.email.send_email_task": {"queue": "notix.standard"},

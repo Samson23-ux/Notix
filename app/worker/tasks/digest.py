@@ -1,14 +1,14 @@
 import psycopg2
-from celery import states
 from sqlalchemy import Sequence
 from datetime import datetime, timezone
 from resend.exceptions import ResendError
-from celery.exceptions import MaxRetriesExceededError, Reject
+from celery.exceptions import Reject
 
 
 from app.worker import celery_app
 from app.core.config import get_settings
 from app.worker import BaseTaskWithFailure
+from app.core.exceptions import MaxRetriesError
 from app.api.models.notification import Notification
 from app.worker import (
     get_redis_repo,
@@ -50,21 +50,27 @@ def collect_and_send_digests(self):
         psycopg2.extensions.TransactionRollbackError,
     ) as exc:
         """retry for transient errors"""
-        if isinstance(exc, ResendError):
-            if hasattr(exc, "code") and exc.code >= 500:
-                raise self.retry(exc=exc)
-        raise self.retry(exc=exc)
-    except (Exception, MaxRetriesExceededError) as exc:
+        try:
+            if isinstance(exc, ResendError):
+                if hasattr(exc, "code") and exc.code >= 500:
+                    raise self.retry(
+                        exc=MaxRetriesError(str(exc)),
+                        countdown=self._backoff_countdown(),
+                    )
+            raise self.retry(
+                exc=MaxRetriesError(str(exc)), countdown=self._backoff_countdown()
+            )
+        except MaxRetriesError as exc:
+            self._handle_failure(
+                exc, self.request.kwargs, "notification", self.request.retries
+            )
+
+            digest.dead_lettered_at = datetime.now(timezone.utc)
+            raise Reject(exc, requeue=False)
+    except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
-        notification_id = digest.id
-        self.update_state(
-            state=states.FAILURE,
-            meta={
-                "record_id": notification_id,
-                "type": "notification",
-                "details": str(exc),
-                "retries": self.request.retries,
-            },
+        self._handle_failure(
+            exc, self.request.kwargs, "notification", self.request.retries
         )
 
         digest.dead_lettered_at = datetime.now(timezone.utc)

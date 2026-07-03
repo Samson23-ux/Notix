@@ -21,8 +21,8 @@ class ServiceUnavailable(AppException):
     pass
 
 
-class TransientError(AppException):
-    """Worker Transient error"""
+class MaxRetriesError(AppException):
+    """Maximum retries exceeded"""
 
     pass
 

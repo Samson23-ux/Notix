@@ -27,5 +27,7 @@ class NotificationRepository(BaseRepository[NotificationBase, Notification]):
             cutoff: datetime = datetime.now(timezone.utc) - timedelta(hours=1)
             filter_conditions.append(self.model.created_at <= cutoff)
 
+        return filter_conditions
+
     def _entity_to_model(self, entity: NotificationBase) -> Notification:
         return Notification(**entity.model_dump())

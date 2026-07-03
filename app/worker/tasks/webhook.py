@@ -1,15 +1,15 @@
 import httpx
-from celery import states
 from uuid import uuid4, UUID
 from datetime import datetime, timezone
 from resend.exceptions import ResendError
-from celery.exceptions import MaxRetriesExceededError, Reject
+from celery.exceptions import Reject
 
 
 from app.worker import celery_app
 from app.core.security import Security
 from app.core.config import get_settings
 from app.worker import BaseTaskWithFailure
+from app.core.exceptions import MaxRetriesError
 from app.api.models.notification import Notification
 from app.worker import (
     get_redis_repo,
@@ -24,7 +24,7 @@ SETTINGS = get_settings()
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
 def deliver_webhook_task(
     self,
-    notification_id: str,
+    notification_id: UUID,
     idempotency_key: str,
     secret: str,
     webhook_url: str,
@@ -39,7 +39,7 @@ def deliver_webhook_task(
         already_processed: str | None = redis_repo.get_processed_email(key)
 
         notification: Notification = notification_service._get_notification(
-            UUID(notification_id)
+            notification_id
         )
 
         if not already_processed:
@@ -55,38 +55,47 @@ def deliver_webhook_task(
             notification.status = "delivered"
             notification.delivered_at = datetime.now(timezone.utc)
             notification_service.update_notification(notification)
-
-            metadata: dict = {
-                "record_id": notification_id,
-                "type": "webhook",
-                "retries": self.request.retries,
-            }
     except (
         ResendError,
         httpx.ConnectError,
         httpx.ConnectTimeout,
     ) as exc:
         """retry for transient errors"""
-        if isinstance(exc, ResendError):
-            if hasattr(exc, "code") and exc.code >= 500:
-                raise self.retry(exc=exc)
-        raise self.retry(exc=exc)
+        try:
+            if isinstance(exc, ResendError):
+                if hasattr(exc, "code") and exc.code >= 500:
+                    raise self.retry(
+                        exc=MaxRetriesError(str(exc)),
+                        countdown=self._backoff_countdown(),
+                    )
+            raise self.retry(
+                exc=MaxRetriesError(str(exc)), countdown=self._backoff_countdown()
+            )
+        except MaxRetriesError as exc:
+            self._handle_failure(
+                exc, self.request.kwargs, "notification", self.request.retries
+            )
+
+            notification.dead_lettered_at = datetime.now(timezone.utc)
+            raise Reject(exc, requeue=False)
     except httpx.HTTPStatusError as exc:
         """Retry for errors with 500 status code and send to dlq for client errors"""
         if exc.response.status_code >= 500:
-            raise self.retry(exc=exc)
+            try:
+                raise self.retry(
+                    exc=MaxRetriesError(str(exc)), countdown=self._backoff_countdown()
+                )
+            except MaxRetriesError as exc:
+                self._handle_failure(
+                    exc, self.request.kwargs, "notification", self.request.retries
+                )
 
-        metadata["details"] = str(exc)
-        self.update_state(
-            state=states.FAILURE,
-            meta=metadata,
-        )
-    except (Exception, MaxRetriesExceededError) as exc:
+                notification.dead_lettered_at = datetime.now(timezone.utc)
+                raise Reject(exc, requeue=False)
+    except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
-        metadata["details"] = str(exc)
-        self.update_state(
-            state=states.FAILURE,
-            meta=metadata,
+        self._handle_failure(
+            exc, self.request.kwargs, "notification", self.request.retries
         )
 
         notification.dead_lettered_at = datetime.now(timezone.utc)

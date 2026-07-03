@@ -62,7 +62,7 @@ class EventChannel:
         channel: aio_pika.Channel = await self._async_connection.channel()
         queue: aio_pika.Queue = await channel.declare_queue(name, passive=passive)
 
-        depth: int = await queue.declaration_result.message_count
+        depth: int = queue.declaration_result.message_count
         return depth
 
     def connect_sync(self):

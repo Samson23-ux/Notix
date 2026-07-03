@@ -1,10 +1,9 @@
 import secrets
 import psycopg2
 from uuid import UUID
-from celery import states
 from resend.exceptions import ResendError
 from datetime import datetime, timezone, timedelta
-from celery.exceptions import MaxRetriesExceededError, Reject
+from celery.exceptions import Reject
 
 
 from app.worker import celery_app
@@ -12,13 +11,8 @@ from app.api.models.email import Email
 from app.core.config import get_settings
 from app.api.schemas.auth import OtpInDB
 from app.worker import BaseTaskWithFailure
+from app.core.exceptions import MaxRetriesError
 from app.api.models.notification import Notification
-from app.worker import (
-    get_redis_repo,
-    get_otp_service,
-    get_email_service,
-    get_notification_service,
-)
 
 SETTINGS = get_settings()
 SENDER_EMAIL = SETTINGS.API_EMAIL
@@ -74,7 +68,9 @@ def verification_message(otp: str):
 
 
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
-def send_verification_email(self, email_id: str, recipient_email: str, user_id: str):
+def send_verification_email(self, email_id: UUID, recipient_email: str, user_id: UUID):
+    from app.worker import get_redis_repo, get_otp_service, get_email_service
+
     try:
         redis_repo = get_redis_repo()
         otp_service = get_otp_service()
@@ -96,14 +92,14 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
 
             redis_repo.mark_email_processed(key, "1", SETTINGS.IDEMPOTENCY_KEY_TTL)
 
-            email: Email = email_service.get_proccessed_email(UUID(email_id))
+            email: Email = email_service.get_proccessed_email(email_id)
             email.status = "delivered"
             email.delivered_at = datetime.now(timezone.utc)
             email_service.update_processed_email(email)
 
             otp_payload: OtpInDB = OtpInDB(
                 otp=otp,
-                user_id=UUID(user_id),
+                user_id=user_id,
                 expires_at=datetime.now(timezone.utc)
                 + timedelta(minutes=SETTINGS().OTP_EXPIRE_TIME),
             )
@@ -116,22 +112,26 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
         psycopg2.extensions.TransactionRollbackError,
     ) as exc:
         """retry for transient errors"""
-        if isinstance(exc, ResendError):
-            if hasattr(exc, "code") and exc.code >= 500:
-                raise self.retry(exc=exc)
-        raise self.retry(exc=exc)
-    except (Exception, MaxRetriesExceededError) as exc:
+        try:
+            if isinstance(exc, ResendError):
+                if hasattr(exc, "code") and exc.code >= 500:
+                    raise self.retry(
+                        exc=MaxRetriesError(str(exc)),
+                        countdown=self._backoff_countdown(),
+                    )
+            raise self.retry(
+                exc=MaxRetriesError(str(exc)), countdown=self._backoff_countdown()
+            )
+        except MaxRetriesError as exc:
+            self._handle_failure(
+                exc, self.request.kwargs, "verification", self.request.retries
+            )
+            raise Reject(exc, requeue=False)
+    except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
-        self.update_state(
-            state=states.FAILURE,
-            meta={
-                "record_id": email_id,
-                "type": "verification",
-                "details": str(exc),
-                "retries": self.request.retries,
-            },
+        self._handle_failure(
+            exc, self.request.kwargs, "notification", self.request.retries
         )
-
         raise Reject(exc, requeue=False)
     finally:
         otp_service._otp_repo.close()
@@ -142,12 +142,14 @@ def send_verification_email(self, email_id: str, recipient_email: str, user_id: 
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
 def send_email_task(
     self,
-    notification_id: str,
+    notification_id: UUID,
     idempotency_key: str,
     recipient_email: str,
     subject: str,
     body: str,
 ):
+    from app.worker import get_redis_repo, get_email_service, get_notification_service
+
     try:
         redis_repo = get_redis_repo()
         email_service = get_email_service()
@@ -157,7 +159,7 @@ def send_email_task(
         already_processed: str | None = redis_repo.get_processed_email(key)
 
         notification: Notification = notification_service._get_notification(
-            UUID(notification_id)
+            notification_id
         )
 
         if not already_processed:
@@ -177,20 +179,27 @@ def send_email_task(
         psycopg2.extensions.TransactionRollbackError,
     ) as exc:
         """retry for transient errors"""
-        if isinstance(exc, ResendError):
-            if hasattr(exc, "code") and exc.code >= 500:
-                raise self.retry(exc=exc)
-        raise self.retry(exc=exc)
-    except (Exception, MaxRetriesExceededError) as exc:
+        try:
+            if isinstance(exc, ResendError):
+                if hasattr(exc, "code") and exc.code >= 500:
+                    raise self.retry(
+                        exc=MaxRetriesError(str(exc)),
+                        countdown=self._backoff_countdown(),
+                    )
+            raise self.retry(
+                exc=MaxRetriesError(str(exc)), countdown=self._backoff_countdown()
+            )
+        except MaxRetriesError as exc:
+            self._handle_failure(
+                exc, self.request.kwargs, "notification", self.request.retries
+            )
+
+            notification.dead_lettered_at = datetime.now(timezone.utc)
+            raise Reject(exc, requeue=False)
+    except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
-        self.update_state(
-            state=states.FAILURE,
-            meta={
-                "record_id": notification_id,
-                "type": "notification",
-                "details": str(exc),
-                "retries": self.request.retries,
-            },
+        self._handle_failure(
+            exc, self.request.kwargs, "notification", self.request.retries
         )
 
         notification.dead_lettered_at = datetime.now(timezone.utc)
@@ -204,12 +213,14 @@ def send_email_task(
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
 def send_critical_email_task(
     self,
-    notification_id: str,
+    notification_id: UUID,
     idempotency_key: str,
     recipient_email: str,
     subject: str,
     body: str,
 ):
+    from app.worker import get_redis_repo, get_email_service, get_notification_service
+
     try:
         redis_repo = get_redis_repo()
         email_service = get_email_service()
@@ -219,7 +230,7 @@ def send_critical_email_task(
         already_processed: str | None = redis_repo.get_processed_email(key)
 
         notification: Notification = notification_service._get_notification(
-            UUID(notification_id)
+            notification_id
         )
 
         if not already_processed:
@@ -239,20 +250,27 @@ def send_critical_email_task(
         psycopg2.extensions.TransactionRollbackError,
     ) as exc:
         """retry for transient errors"""
-        if isinstance(exc, ResendError):
-            if hasattr(exc, "code") and exc.code >= 500:
-                raise self.retry(exc=exc)
-        raise self.retry(exc=exc)
-    except (Exception, MaxRetriesExceededError) as exc:
+        try:
+            if isinstance(exc, ResendError):
+                if hasattr(exc, "code") and exc.code >= 500:
+                    raise self.retry(
+                        exc=MaxRetriesError(str(exc)),
+                        countdown=self._backoff_countdown(),
+                    )
+            raise self.retry(
+                exc=MaxRetriesError(str(exc)), countdown=self._backoff_countdown()
+            )
+        except MaxRetriesError as exc:
+            self._handle_failure(
+                exc, self.request.kwargs, "notification", self.request.retries
+            )
+
+            notification.dead_lettered_at = datetime.now(timezone.utc)
+            raise Reject(exc, requeue=False)
+    except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
-        self.update_state(
-            state=states.FAILURE,
-            meta={
-                "record_id": notification_id,
-                "type": "notification",
-                "details": str(exc),
-                "retries": self.request.retries,
-            },
+        self._handle_failure(
+            exc, self.request.kwargs, "notification", self.request.retries
         )
 
         notification.dead_lettered_at = datetime.now(timezone.utc)

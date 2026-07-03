@@ -1,5 +1,5 @@
+import random
 from uuid import UUID
-from celery.result import AsyncResult
 from datetime import datetime, timezone
 
 
@@ -9,7 +9,7 @@ from app.api.models.notification import Notification
 
 class BaseTaskWithFailure(celery_app.Task):
     # maximum retry value
-    max_retries = 5
+    max_retries = 1
 
     """
     retry jitter set to True to ensure randomness in retry_backoff value
@@ -28,35 +28,38 @@ class BaseTaskWithFailure(celery_app.Task):
     """
     retry_backoff_max = 600
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
+    def _backoff_countdown(self):
+        retries = self.request.retries
+        countdown = min(self.retry_backoff * (2 ** retries), self.retry_backoff_max)
+
+        if self.retry_jitter:
+            countdown = random.randrange(int(countdown * 0.5), int(countdown * 1.5))
+        return countdown
+
+    def _handle_failure(self, exc, kwargs, notis_type: str, retries: int):
         from app.worker import get_notification_service, get_email_service
 
         try:
             email_service = get_email_service()
             notification_service = get_notification_service()
 
-            result = AsyncResult(task_id)
-            result_info: dict = result.info
-
-            type: str = result_info.get("type")
-
-            if type == "verification":
-                email_id: UUID = UUID(result_info.get("record_id"))
+            if notis_type == "verification":
+                email_id: UUID = kwargs.get("email_id")
                 email: Email = email_service.get_proccessed_email(email_id)
 
                 email.status = "failed"
                 email.failed_at = datetime.now(timezone.utc)
                 email_service.update_processed_email(email)
             else:
-                notification_id: UUID = UUID(result_info.get("record_id"))
+                notification_id: UUID = kwargs.get("notification_id")
                 notification: Notification = notification_service._get_notification(
                     notification_id
                 )
 
                 notification.status = "failed"
-                notification.retry_count("retries")
+                notification.retry_count = retries
+                notification.faliure_reason = str(exc)
                 notification.failed_at = datetime.now(timezone.utc)
-                notification.faliure_reason(result_info.get("details"))
 
                 notification_service.update_notification(notification)
         finally:

@@ -13,7 +13,6 @@ from app.api.services.email import EmailService
 from app.api.services.channel import EventChannel
 from app.worker import get_db_session, get_redis_client
 from app.api.repo.notification import NotificationRepository
-from app.api.services.notification import NotificationService
 
 SETTINGS = get_settings()
 
@@ -28,11 +27,12 @@ def get_email_service() -> EmailService:
     return email_service
 
 
-def get_notification_service() -> NotificationService:
+def get_notification_service():
+    from app.api.services.notification import NotificationService
     session = get_db_session()
 
     email_service: NotificationService = NotificationService(
-        email_repo=NotificationRepository(sync_session=session)
+        notis_repo=NotificationRepository(sync_session=session)
     )
 
     return email_service

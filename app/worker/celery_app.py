@@ -11,4 +11,11 @@ celery_app = Celery(
 
 
 celery_app.config_from_object("app.worker.celeryconfig")
-celery_app.autodiscover_tasks(["app.worker.tasks"])
+celery_app.autodiscover_tasks(
+    [
+        "app.worker.tasks.dlq",
+        "app.worker.tasks.email",
+        "app.worker.tasks.digest",
+        "app.worker.tasks.webhook",
+    ]
+)

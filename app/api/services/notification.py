@@ -11,7 +11,9 @@ from app.api.services.channel import EventChannel
 from app.api.models.webhook import WebhookEndpoint
 from app.api.services.webhook import WebhookService
 from app.api.models.notification import Notification
+from app.worker.tasks.webhook import deliver_webhook_task
 from app.api.repo.notification import NotificationRepository
+from app.worker.tasks.email import send_email_task, send_critical_email_task
 from app.api.schemas.notification import (
     EmailNotification,
     WebhookNotification,
@@ -54,8 +56,6 @@ class NotificationService:
         curr_user: User,
         payload: EmailNotification,
     ) -> NotificationResponse:
-        from app.worker.tasks.email import send_email_task, send_critical_email_task
-
         type: str = payload.type.lower()
         priority: str = payload.priority.lower()
         idempotency_key: str = payload.idempotency_key
@@ -80,12 +80,13 @@ class NotificationService:
 
         current_depth: int = await channel.queue_depth(queue)
 
+
         if current_depth > self.SETTINGS.MAXIMUM_QUEUE_DEPTH:
             sentry_logger.error("Maximum depth reached for queue {queue}", queue=queue)
             raise ServiceUnavailable()
 
         try:
-            await self._notis_repo.add(entity=payload)
+            self._notis_repo.add(entity=payload)
             await self._notis_repo.commit()
             sentry_logger.info(
                 "Email Notification created successfully for user {email}",
@@ -99,7 +100,7 @@ class NotificationService:
             ### send to worker
             if type == "email":
                 if priority == "critical" or priority == "high":
-                    send_critical_email_task.appy_async(
+                    send_critical_email_task.apply_async(
                         priority=self.PRIORITY_MAP.get(priority),
                         kwargs={
                             "notification_id": notification_db.id,
@@ -110,7 +111,7 @@ class NotificationService:
                         },
                     )
                 else:
-                    send_email_task.appy_async(
+                    send_email_task.apply_async(
                         priority=self.PRIORITY_MAP.get(priority),
                         kwargs={
                             "notification_id": notification_db.id,
@@ -139,8 +140,6 @@ class NotificationService:
         payload: WebhookNotification,
         webhook_service: WebhookService,
     ) -> NotificationResponse:
-        from app.worker.tasks.webhook import deliver_webhook_task
-
         url: str = payload.webhook_url
         idempotency_key: str = payload.idempotency_key
 
@@ -177,7 +176,7 @@ class NotificationService:
             raise UrlNotFoundError(url=url)
 
         try:
-            await self._notis_repo.add(entity=payload)
+            self._notis_repo.add(entity=payload)
             await self._notis_repo.commit()
             sentry_logger.info(
                 "Webhook Notification created successfully for user {email}",
@@ -188,7 +187,7 @@ class NotificationService:
                 idempotency_key=idempotency_key
             )
 
-            deliver_webhook_task.appy_async(
+            deliver_webhook_task.apply_async(
                 priority=5,
                 kwargs={
                     "notification_id": notification_db.id,
@@ -244,7 +243,7 @@ class NotificationService:
             type="digest", status="pending", digest=True
         )
 
-    def _get_notification(self, notification_id) -> Notification | None:
+    def _get_notification(self, notification_id: UUID) -> Notification | None:
         return self._notis_repo.get_sync_record(id=notification_id)
 
     def update_notification(self, notification: Notification):

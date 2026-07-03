@@ -59,22 +59,11 @@ class Request:
         headers: dict = None,
         cookies: dict = None,
     ) -> httpx.Response:
-        curr_retries: int = 0
-        status: str = "failure"
+        res: httpx.Response = self._sync_client.post(
+            url, data, json, headers, cookies
+        )
 
-        while curr_retries < self.MAXIMUM_RETRIES and status == "failure":
-            try:
-                res: httpx.Response = self._sync_client.post(
-                    url, data, json, headers, cookies
-                )
-
-                status = "success"
-                return res
-            except httpx.ConnectError, httpx.ConnectTimeout:
-                curr_retries += 1
-
-        if status == "failure":
-            raise CheckTimeoutError()
+        return res
 
     def sync_get(
         self, url: str, headers: dict = None, cookies: dict = None

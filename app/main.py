@@ -16,7 +16,6 @@ from app.database.session import redis_client
 from app.api.services.channel import EventChannel
 from app.core.exception_handlers import ExceptionHandler
 
-
 SECURITY = Security()
 SETTINGS = get_settings()
 
@@ -46,7 +45,11 @@ async def create_exchange_and_queue(channel: EventChannel):
             queue_exchange,
             n,
             rk,
-            arguments={"x_max_priority": 10, "x_dead_letter_exchange": "notix.dlx"},
+            arguments={
+                "x-max-priority": 10,
+                "x-dead-letter-exchange": "notix.dlx",
+                "x-dead-letter-routing-key": "dlq",
+            },
         )
 
 

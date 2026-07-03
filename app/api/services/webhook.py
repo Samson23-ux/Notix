@@ -17,7 +17,7 @@ class WebhookService:
         self._webhook_repo = webhook_repo
 
     async def _get_endpoint(self, user_id: UUID, url: str) -> WebhookEndpoint | None:
-        return self._webhook_repo.get_record(user_id=user_id, endpoint=url)
+        return await self._webhook_repo.get_record(user_id=user_id, endpoint=url)
 
     async def create_endpoint(
         self, curr_user: User, payload: Webhook
@@ -44,7 +44,7 @@ class WebhookService:
                 secret=secrets.token_urlsafe(32),
                 **payload.model_dump(),
             )
-            await self._webhook_repo.add(entity=webhook_db)
+            self._webhook_repo.add(entity=webhook_db)
             await self._webhook_repo.commit()
 
             webhook: WebhookEndpoint | None = await self._webhook_repo.get_record(

@@ -1,11 +1,15 @@
 import uuid
 import httpx
 import pytest
+import secrets
 from unittest.mock import patch, MagicMock
+
+BASE_PATH = "app.api.services.notification"
 
 
 def get_notification_payload():
     return {
+        "recipient": "user@example.com",
         "idempotency_key": "test-send-email",
         "type": "email",
         "subject": "Integration Test",
@@ -18,19 +22,30 @@ def get_webhook_payload():
         "idempotency_key": "test-send-email",
         "type": "email",
         "webhook_url": "fake-webhook-url",
-        "payload": {}
+        "payload": {},
     }
 
 
 class TestSendNotification:
+    TASK_PATH = f"{BASE_PATH}.send_email_task.apply_async"
+
     @pytest.mark.asyncio
     async def test_create_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.get_email_service"
-        with patch(path, new_callable=MagicMock) as email_mock:
+        with patch(self.TASK_PATH, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
             notification_payload: dict = get_notification_payload()
+
+            api_key_res: httpx.Response = await async_client.post(
+                "/auth/keys",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "env": "test",
+                },
+            )
+
+            api_key: str = api_key_res.json()["data"]["key"]
 
             res: httpx.Response = await async_client.post(
                 "/notifications",
@@ -38,11 +53,13 @@ class TestSendNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
             json_res = res.json()
 
+            email_mock.assert_called_once()
             assert res.status_code == 202
             assert (
                 json_res["data"]["idempotency_key"]
@@ -53,10 +70,19 @@ class TestSendNotification:
     async def test_existing_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.get_email_service"
-        with patch(path, new_callable=MagicMock) as email_mock:
+        with patch(self.TASK_PATH, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
             notification_payload: dict = get_notification_payload()
+
+            api_key_res: httpx.Response = await async_client.post(
+                "/auth/keys",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "env": "test",
+                },
+            )
+
+            api_key: str = api_key_res.json()["data"]["key"]
 
             await async_client.post(
                 "/notifications",
@@ -64,6 +90,7 @@ class TestSendNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
@@ -73,57 +100,109 @@ class TestSendNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
+            email_mock.assert_called_once()
             assert res.status_code == 409
 
     @pytest.mark.asyncio
-    async def test_unauthenticated_notification(self, async_client: httpx.AsyncClient):
-        path: str = "app.worker.tasks.email.get_email_service"
+    async def test_missing_api_key(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+        notification_payload: dict = get_notification_payload()
 
-        with patch(path, new_callable=MagicMock) as email_mock:
-            notification_payload: dict = get_notification_payload()
+        res: httpx.Response = await async_client.post(
+            "/notifications",
+            json=notification_payload,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
 
-            res: httpx.Response = await async_client.post(
-                "/notifications",
-                json=notification_payload,
-                headers={"env": "test"},
-            )
+        assert res.status_code == 404
 
-            assert res.status_code == 401
+    @pytest.mark.asyncio
+    async def test_unauthenticated_notification(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        access_token = login.json()["data"]["access_token"]
+        notification_payload: dict = get_notification_payload()
+
+        api_key_res: httpx.Response = await async_client.post(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        api_key: str = api_key_res.json()["data"]["key"]
+
+        res: httpx.Response = await async_client.post(
+            "/notifications",
+            json=notification_payload,
+            headers={"env": "test", "api_key": api_key},
+        )
+
+        assert res.status_code == 401
 
     @pytest.mark.asyncio
     async def test_invalid_payload(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.get_email_service"
-        with patch(path, new_callable=MagicMock) as email_mock:
-            access_token = login.json()["data"]["access_token"]
-            notification_payload: dict = get_notification_payload()
+        access_token = login.json()["data"]["access_token"]
+        notification_payload: dict = get_notification_payload()
 
-            notification_payload["type"] = "bulk"
-            res: httpx.Response = await async_client.post(
-                "/notifications",
-                json=notification_payload,
+        api_key_res: httpx.Response = await async_client.post(
+            "/auth/keys",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+            },
+        )
+
+        api_key: str = api_key_res.json()["data"]["key"]
+
+        notification_payload["type"] = "bulk"
+        res: httpx.Response = await async_client.post(
+            "/notifications",
+            json=notification_payload,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "env": "test",
+                "api_key": api_key,
+            },
+        )
+
+        assert res.status_code == 422
+
+
+class TestWebhookNotification:
+    TASK_PATH = f"{BASE_PATH}.deliver_webhook_task.apply_async"
+
+    @pytest.mark.asyncio
+    async def test_create_notification(
+        self, async_client: httpx.AsyncClient, login: httpx.Response
+    ):
+        with patch(self.TASK_PATH, new_callable=MagicMock) as webhook_mock:
+            access_token = login.json()["data"]["access_token"]
+
+            webhook_payload: dict = {"endpoint": "fake-webhook-url"}
+
+            api_key_res: httpx.Response = await async_client.post(
+                "/auth/keys",
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
                 },
             )
 
-            assert res.status_code == 400
+            api_key: str = api_key_res.json()["data"]["key"]
 
-class TestWebhookNotification:
-    @pytest.mark.asyncio
-    async def test_create_notification(
-        self, async_client: httpx.AsyncClient, login: httpx.Response
-    ):
-        path: str = "app.worker.tasks.webhook.get_request_service"
-        with patch(path, new_callable=MagicMock) as webhook_mock:
-            access_token = login.json()["data"]["access_token"]
-
-            webhook_payload: dict = {"endpoint": "fake-webhook-url"}
             await async_client.post(
                 "/webhook",
                 json=webhook_payload,
@@ -140,11 +219,13 @@ class TestWebhookNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
             json_res = res.json()
 
+            webhook_mock.assert_called_once()
             assert res.status_code == 202
             assert (
                 json_res["data"]["idempotency_key"]
@@ -155,9 +236,18 @@ class TestWebhookNotification:
     async def test_existing_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.webhook.get_request_service"
-        with patch(path, new_callable=MagicMock) as webhook_mock:
+        with patch(self.TASK_PATH, new_callable=MagicMock) as webhook_mock:
             access_token = login.json()["data"]["access_token"]
+
+            api_key_res: httpx.Response = await async_client.post(
+                "/auth/keys",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "env": "test",
+                },
+            )
+
+            api_key: str = api_key_res.json()["data"]["key"]
 
             webhook_payload: dict = {"endpoint": "fake-webhook-url"}
             await async_client.post(
@@ -166,6 +256,7 @@ class TestWebhookNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
@@ -176,6 +267,7 @@ class TestWebhookNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
@@ -185,20 +277,34 @@ class TestWebhookNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key,
                 },
             )
 
+            webhook_mock.assert_called_once()
             assert res.status_code == 409
 
+
 class TestGetNotification:
+    TASK_PATH = f"{BASE_PATH}.send_email_task.apply_async"
+
     @pytest.mark.asyncio
     async def test_get_notification(
         self, async_client: httpx.AsyncClient, login: httpx.Response
     ):
-        path: str = "app.worker.tasks.email.get_email_service"
-        with patch(path, new_callable=MagicMock) as email_mock:
+        with patch(self.TASK_PATH, new_callable=MagicMock) as email_mock:
             access_token = login.json()["data"]["access_token"]
             notification_payload: dict = get_notification_payload()
+
+            api_key_res: httpx.Response = await async_client.post(
+                "/auth/keys",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "env": "test",
+                },
+            )
+
+            api_key: str = api_key_res.json()["data"]["key"]
 
             create_res: httpx.Response = await async_client.post(
                 "/notifications",
@@ -206,6 +312,7 @@ class TestGetNotification:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "env": "test",
+                    "api_key": api_key
                 },
             )
 
@@ -220,6 +327,7 @@ class TestGetNotification:
 
             json_res = res.json()
 
+            email_mock.assert_called_once()
             assert res.status_code == 200
             assert (
                 json_res["data"]["idempotency_key"]
