@@ -25,6 +25,7 @@ from app.api.models.otp import Otp
 from app.api.models.base import Base
 from app.core.config import get_settings
 from app.api import models  # noqa: F401
+from app.worker.celery_app import celery_app
 from app.api.services.request import Request
 from app.api.services.auth import AuthService
 from app.api.repo.redis import RedisRepository
@@ -249,3 +250,25 @@ async def sign_in_with_github(async_client: AsyncClient):
     )
 
     return callback_res
+
+
+@pytest_asyncio.fixture
+async def celery_task_config(async_client: AsyncClient):
+    """
+    Set task_always_eager=True to skip serialization,
+    queuing and the need for an active worker.
+    Task runs synchronously on the same os/machine
+    as the calling process. This enables testing of task
+    logic.
+
+    -------------------
+
+    Set task_eager_propagates=True to propagate raised exceptions
+    """
+    celery_app.conf.task_always_eager = True
+    celery_app.conf.task_eager_propagates = True
+
+    yield
+
+    celery_app.conf.task_always_eager = False
+    celery_app.conf.task_eager_propagates = False

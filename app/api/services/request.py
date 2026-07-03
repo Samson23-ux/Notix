@@ -3,7 +3,9 @@ from app.core.exceptions import CheckTimeoutError
 
 
 class Request:
-    def __init__(self, async_client: httpx.AsyncClient, sync_client: httpx.Client):
+    def __init__(
+        self, async_client: httpx.AsyncClient = None, sync_client: httpx.Client = None
+    ):
         self._sync_client = sync_client
         self._async_client = async_client
 
@@ -23,7 +25,7 @@ class Request:
         while curr_retries < self.MAXIMUM_RETRIES and status == "failure":
             try:
                 res: httpx.Response = await self._async_client.post(
-                    url, data, json, headers, cookies
+                    url, data=data, json=json, headers=headers, cookies=cookies
                 )
 
                 status = "success"
@@ -60,7 +62,7 @@ class Request:
         cookies: dict = None,
     ) -> httpx.Response:
         res: httpx.Response = self._sync_client.post(
-            url, data, json, headers, cookies
+            url, data=data, json=json, headers=headers, cookies=cookies
         )
 
         return res
@@ -81,6 +83,6 @@ class Request:
                 return res
             except httpx.ConnectError, httpx.ConnectTimeout:
                 curr_retries += 1
-    
+
     def close(self):
         self._sync_client.close()

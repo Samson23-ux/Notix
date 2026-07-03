@@ -9,7 +9,7 @@ from app.api.models.notification import Notification
 
 class BaseTaskWithFailure(celery_app.Task):
     # maximum retry value
-    max_retries = 1
+    max_retries = 5
 
     """
     retry jitter set to True to ensure randomness in retry_backoff value
@@ -45,7 +45,7 @@ class BaseTaskWithFailure(celery_app.Task):
 
             if notis_type == "verification":
                 email_id: UUID = kwargs.get("email_id")
-                email: Email = email_service.get_proccessed_email(email_id)
+                email: Email = email_service.get_processed_email(email_id)
 
                 email.status = "failed"
                 email.failed_at = datetime.now(timezone.utc)

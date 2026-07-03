@@ -92,7 +92,7 @@ def send_verification_email(self, email_id: UUID, recipient_email: str, user_id:
 
             redis_repo.mark_email_processed(key, "1", SETTINGS.IDEMPOTENCY_KEY_TTL)
 
-            email: Email = email_service.get_proccessed_email(email_id)
+            email: Email = email_service.get_processed_email(email_id)
             email.status = "delivered"
             email.delivered_at = datetime.now(timezone.utc)
             email_service.update_processed_email(email)
@@ -101,7 +101,7 @@ def send_verification_email(self, email_id: UUID, recipient_email: str, user_id:
                 otp=otp,
                 user_id=user_id,
                 expires_at=datetime.now(timezone.utc)
-                + timedelta(minutes=SETTINGS().OTP_EXPIRE_TIME),
+                + timedelta(minutes=SETTINGS.OTP_EXPIRE_TIME),
             )
 
             otp_service.create_otp(otp_payload)
@@ -130,7 +130,7 @@ def send_verification_email(self, email_id: UUID, recipient_email: str, user_id:
     except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
         self._handle_failure(
-            exc, self.request.kwargs, "notification", self.request.retries
+            exc, self.request.kwargs, "verification", self.request.retries
         )
         raise Reject(exc, requeue=False)
     finally:
@@ -195,6 +195,7 @@ def send_email_task(
             )
 
             notification.dead_lettered_at = datetime.now(timezone.utc)
+            notification_service.update_notification(notification)
             raise Reject(exc, requeue=False)
     except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
@@ -203,6 +204,7 @@ def send_email_task(
         )
 
         notification.dead_lettered_at = datetime.now(timezone.utc)
+        notification_service.update_notification(notification)
         raise Reject(exc, requeue=False)
     finally:
         redis_repo._sync_redis.close()
@@ -266,6 +268,7 @@ def send_critical_email_task(
             )
 
             notification.dead_lettered_at = datetime.now(timezone.utc)
+            notification_service.update_notification(notification)
             raise Reject(exc, requeue=False)
     except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
@@ -274,6 +277,7 @@ def send_critical_email_task(
         )
 
         notification.dead_lettered_at = datetime.now(timezone.utc)
+        notification_service.update_notification(notification)
         raise Reject(exc, requeue=False)
     finally:
         redis_repo._sync_redis.close()

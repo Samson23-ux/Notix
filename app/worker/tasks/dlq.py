@@ -5,11 +5,12 @@ from app.worker import celery_app
 from app.worker import get_event_channel
 
 
-@celery_app.task
-def monitor_dlq():
+@celery_app.task(bind=True)
+def monitor_dlq(self):
     try:
         channel = get_event_channel()
 
+        channel.connect_sync()
         depth = channel.sync_queue_depth("notix.dlq")
         sentry_logger.info("Current queue depth: {depth}", depth=depth)
 

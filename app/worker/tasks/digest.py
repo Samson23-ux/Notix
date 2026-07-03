@@ -10,17 +10,14 @@ from app.core.config import get_settings
 from app.worker import BaseTaskWithFailure
 from app.core.exceptions import MaxRetriesError
 from app.api.models.notification import Notification
-from app.worker import (
-    get_redis_repo,
-    get_email_service,
-    get_notification_service,
-)
 
 SETTINGS = get_settings()
 
 
 @celery_app.task(base=BaseTaskWithFailure, bind=True)
 def collect_and_send_digests(self):
+    from app.worker import get_redis_repo, get_email_service, get_notification_service
+
     redis_repo = get_redis_repo()
     email_service = get_email_service()
     notification_service = get_notification_service()
@@ -33,10 +30,7 @@ def collect_and_send_digests(self):
         for digest in notification_digest:
             email_service.api_key = SETTINGS.RESEND_API_KEY
             email_service.send(
-                SETTINGS.API_EMAIL,
-                digest.recipient,
-                digest.subject,
-                digest.body
+                SETTINGS.API_EMAIL, digest.recipient, digest.subject, digest.body
             )
 
             digest.status = "delivered"
@@ -66,6 +60,7 @@ def collect_and_send_digests(self):
             )
 
             digest.dead_lettered_at = datetime.now(timezone.utc)
+            notification_service.update_notification(digest)
             raise Reject(exc, requeue=False)
     except Exception as exc:
         """Update state and reject manaully to send to dlq for non-transient errors"""
@@ -74,6 +69,7 @@ def collect_and_send_digests(self):
         )
 
         digest.dead_lettered_at = datetime.now(timezone.utc)
+        notification_service.update_notification(digest)
         raise Reject(exc, requeue=False)
     finally:
         redis_repo._sync_redis.close()
