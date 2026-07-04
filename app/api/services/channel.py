@@ -67,7 +67,7 @@ class EventChannel:
 
     def connect_sync(self):
         connection: pika.BlockingConnection = pika.BlockingConnection(
-            pika.ConnectionParameters(self.SETTINGS.BROKER_HOST)
+            pika.URLParameters(self.SETTINGS.BROKER_URL)
         )
         self._sync_connection = connection
 

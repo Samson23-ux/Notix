@@ -15,8 +15,10 @@ class UserService:
     async def get_user_by_email(self, **filters) -> User:
         if "email" in filters:
             user_email: str = filters["email"]
-        if "google_email" in filters:
+        elif "google_email" in filters:
             user_email: str = filters["google_email"]
+        else:
+            user_email: str = filters["github_email"]
 
         try:
             user: User | None = await self._user_repo.get_record(**filters)

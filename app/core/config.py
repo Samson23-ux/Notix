@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     GITHUB_USER_URL: str
     GITHUB_CLIENT_ID: str
     GITHUB_EMAIL_URL: str
-    GITHUB_CALLBACK_URL: str
+    GITHUB_CALLBACK_URL: str = "http://localhost:8000/api/v1/auth/github/callback"
     GITHUB_CLIENT_SECRET: str
     GITHUB_AUTHORIZE_URL: str
     GITHUB_ACCESS_TOKEN_URL: str
@@ -60,7 +60,6 @@ class Settings(BaseSettings):
 
     # rabbitmq
     BROKER_URL: str
-    BROKER_HOST: str
     BROKER_DLQ: list[tuple] = [("notix.dlq", "dlq")]
     BROKER_QUEUE: list[tuple] = [
         ("notix.high", "high"),
@@ -78,7 +77,7 @@ class Settings(BaseSettings):
     IDEMPOTENCY_KEY_TTL: int = 60 * 60 * 24
 
     # otp
-    OTP_EXPIRE_TIME: int
+    OTP_EXPIRE_TIME: int = 15
 
 
 @lru_cache(maxsize=1)

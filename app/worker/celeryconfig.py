@@ -27,14 +27,14 @@ task_routes = {
     "app.worker.tasks.email.send_critical_email_task": {"queue": "notix.high"},
     "app.worker.tasks.webhook.deliver_webhook_task": {"queue": "notix.webhook"},
     "app.worker.tasks.digest.collect_and_send_digests": {"queue": "notix.batch"},
-    "app.worker.tasks.dlq.monitor_dlq": {"queue": "notix.dlq"},
+    "app.worker.tasks.dlq.monitor_dlq": {"queue": "notix.standard"},
 }
 
 
 beat_schedule = {
     "digest": {
         "task": "app.worker.tasks.digest.collect_and_send_digests",
-        "schedule": crontab(hour="*/1"),
+        "schedule": crontab(minute="0", hour="*"),
     },
     "dlq": {
         "task": "app.worker.tasks.dlq.monitor_dlq",

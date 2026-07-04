@@ -75,6 +75,7 @@ async def sign_up_with_email(
 @limiter.limit("3/5minute")
 async def sign_in_with_google(request: Request, security: SecurityDep):
     redirect_uri = request.url_for("google_callback")
+    await security.register_oauth()
     return await security.oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -92,6 +93,7 @@ async def google_callback(
     auth_service: AuthServiceDep,
     user_service: UserServiceDep,
 ):
+    await security.register_oauth()
     payload: dict = await security.oauth.google.authorize_access_token(request)
     access_token, refresh_token = await auth_service.sign_up_with_google(
         payload, user_service, security
@@ -117,7 +119,7 @@ async def google_callback(
     description="Sign up with github",
 )
 @limiter.limit("10/minute")
-async def sign_in(request: Request, security: SecurityDep):
+async def sign_in_with_github(request: Request, security: SecurityDep):
     state: str = str(uuid4())
     code_verifier: str = await security.get_code_verifier()
     code_challenge: str = await security.hash_code_challenge(code_verifier)
@@ -155,9 +157,9 @@ async def github_callback(
     error: str = None,
     state: str = None,
     code: str = None,
-    code_verifier: str = None,
 ):
     saved_state = None
+    code_verifier = None
 
     if error:
         raise AuthorizationError()

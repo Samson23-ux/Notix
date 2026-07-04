@@ -1,0 +1,209 @@
+services:
+  postgres_api:
+    image: postgres:18-alpine
+    container_name: postgres_api
+    restart: always
+    volumes:
+      - postgres_api:/var/lib/postgresql/
+    environment:
+      - POSTGRES_DB=notix
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -p 5432 -U postgres -d notix"]
+      retries: 5
+      timeout: 10s
+      interval: 30s
+      start_period: 30s
+      start_interval: 5s
+
+  postgres_test:
+    image: postgres:18-alpine
+    container_name: postgres_test
+    restart: always
+    volumes:
+      - postgres_test:/var/lib/postgresql/
+    environment:
+      - POSTGRES_DB=test_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - 5433:5433
+
+  redis_api:
+    image: redis:8-alpine
+    container_name: redis_api
+    restart: always
+    volumes:
+      - redis_api:/var/lib/postgresql/
+    ports:
+      - 6379:6379
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      retries: 5
+      timeout: 10s
+      interval: 30s
+      start_period: 30s
+      start_interval: 5s
+
+  rabbitmq_api:
+    image: rabbitmq:4.0-management-alpine
+    container_name: rabbitmq_api
+    restart: always
+    volumes:
+      - rabbitmq_api:/var/lib/postgresql/
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_DEFAULT_VHOST=vhost
+    ports:
+      - 5672:5672
+      - 15672:15672
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running"]
+      retries: 5
+      timeout: 10s
+      interval: 30s
+      start_period: 30s
+      start_interval: 5s
+
+  worker_high_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worker_high_api
+    restart: always
+    volumes:
+      - .:/Notix
+      - /Notix/.venv
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis_api:6379
+      - BROKER_URL=amqp://guest:guest@rabbitmq_api:5672/vhost
+      - SYNC_DB_URL=postgresql+psycopg2://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_TEST_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_test:5433/test_db
+    command: ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "-Q", "notix.high", "-P", "gevent", "-l", "info"]
+    depends_on:
+      postgres_api:
+        condition: service_healthy
+      redis_api:
+        condition: service_healthy
+      rabbitmq_api:
+        condition: service_healthy
+
+  worker_standard_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worker_standard_api
+    restart: always
+    volumes:
+      - .:/Notix
+      - /Notix/.venv
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis_api:6379
+      - BROKER_URL=amqp://guest:guest@rabbitmq_api:5672/vhost
+      - SYNC_DB_URL=postgresql+psycopg2://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_TEST_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_test:5433/test_db
+    command:
+      ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "-Q", "notix.standard,notix.webhook", "-P", "gevent", "-l", "info"]
+    depends_on:
+      postgres_api:
+        condition: service_healthy
+      redis_api:
+        condition: service_healthy
+      rabbitmq_api:
+        condition: service_healthy
+
+  worker_batch_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worker_batch_api
+    restart: always
+    volumes:
+      - .:/Notix
+      - /Notix/.venv
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis_api:6379
+      - BROKER_URL=amqp://guest:guest@rabbitmq_api:5672/vhost
+      - SYNC_DB_URL=postgresql+psycopg2://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_TEST_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_test:5433/test_db
+    command:
+      ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "-Q", "notix.batch", "-P", "gevent", "-l", "info"]
+    depends_on:
+      postgres_api:
+        condition: service_healthy
+      redis_api:
+        condition: service_healthy
+      rabbitmq_api:
+        condition: service_healthy
+
+  beat_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beat_api
+    restart: always
+    volumes:
+      - .:/Notix
+      - /Notix/.venv
+      - beat_data:/Notix/beat_data
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis_api:6379
+      - BROKER_URL=amqp://guest:guest@rabbitmq_api:5672/vhost
+      - SYNC_DB_URL=postgresql+psycopg2://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_TEST_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_test:5433/test_db
+    command:
+      ["uv", "run", "celery", "-A", "app.worker.celery_app", "beat", "-s", "/Notix/beat_data/celerybeat-schedule", "-l", "info"]
+    depends_on:
+      postgres_api:
+        condition: service_healthy
+      redis_api:
+        condition: service_healthy
+      rabbitmq_api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api
+    restart: always
+    volumes:
+      - .:/Notix
+      - pytest_cache:/Notix/.pytest_cache
+      - /Notix/.venv
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis_api:6379
+      - BROKER_URL=amqp://guest:guest@rabbitmq_api:5672/vhost
+      - SYNC_DB_URL=postgresql+psycopg2://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_api:5432/notix
+      - ASYNC_TEST_DB_URL=postgresql+asyncpg://postgres:postgres@postgres_test:5433/test_db
+    ports:
+      - 8000:8000
+    depends_on:
+      postgres_api:
+        condition: service_healthy
+      redis_api:
+        condition: service_healthy
+      rabbitmq_api:
+        condition: service_healthy
+
+volumes:
+  beat_data:
+  redis_api:
+  pytest_cache:
+  postgres_api:
+  rabbitmq_api:
+  postgres_test:

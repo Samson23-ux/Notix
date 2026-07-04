@@ -45,7 +45,6 @@ def deliver_webhook_task(
                 "x_notix_delivery_id": str(uuid4()),
                 "x_notix_idempotency_key": idempotency_key,
             }
-            print(webhook_url)
             request.sync_post(url=webhook_url, headers=headers)
 
             redis_repo.mark_email_processed(key, "1", SETTINGS.IDEMPOTENCY_KEY_TTL)

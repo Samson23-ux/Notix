@@ -175,22 +175,17 @@ class AuthService:
         )
 
         if existing_user:
-            if existing_user.is_deactivated:
-                sentry_logger.error(
-                    "Invalid credentials received from user {email}", email=user_email
-                )
-                raise CredentialError()
-
             existing_user.is_active = True
             await user_service.update_user(existing_user)
         else:
             user = UserInDB(
+                type="google",
+                is_active=True,
+                is_verified=True,
                 google_id=google_id,
                 google_email=user_email,
-                is_verified=True,
-                is_active=True,
-                type="google",
             )
+            await user_service.create_user(user, user_email)
 
         access_token, refresh_token = await self._get_tokens(
             user_email, "google", security
@@ -260,17 +255,18 @@ class AuthService:
 
             user: User = await user_service._get_user_by_email(github_email=user_email)
 
-            if not user:
+            if user:
+                user.is_active = True
+                await user_service.update_user(user)
+            else:
                 user: UserInDB = UserInDB(
                     type="github",
+                    is_active=True,
+                    is_verified=True,
                     github_id=str(user_profile["id"]),
                     github_email=user_profile["email"],
                 )
                 await user_service.create_user(user, user_profile["email"])
-
-            user: User | None = await user_service._get_user_by_email(
-                github_email=user_email
-            )
 
             access_token, refresh_token = await self._get_tokens(
                 user_profile["email"], "github", security

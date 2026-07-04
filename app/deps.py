@@ -181,15 +181,15 @@ async def get_current_user(
 
     if user_type == "email":
         user: User = await user_service.get_user_by_email(
-            email=user_email, is_verified=True, is_deactivated=False
+            email=user_email, is_verified=True
         )
     elif user_type == "github":
         user: User = await user_service.get_user_by_email(
-            github_email=user_email, is_verified=True, is_deactivated=False
+            github_email=user_email, is_verified=True
         )
     else:
         user: User = await user_service.get_user_by_email(
-            google_email=user_email, is_verified=True, is_deactivated=False
+            google_email=user_email, is_verified=True
         )
 
     return user

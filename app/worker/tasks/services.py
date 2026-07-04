@@ -29,6 +29,7 @@ def get_email_service() -> EmailService:
 
 def get_notification_service():
     from app.api.services.notification import NotificationService
+
     session = get_db_session()
 
     email_service: NotificationService = NotificationService(
@@ -52,8 +53,14 @@ def get_otp_service() -> OtpService:
     return otp_service
 
 
+async def raise_for_5xx(response):
+    response.raise_for_status()
+
+
 def get_request_service() -> Request:
-    return Request(sync_client=Client(timeout=10.0))
+    return Request(
+        sync_client=Client(timeout=10.0, event_hooks={"response": [raise_for_5xx]})
+    )
 
 
 def get_redis_repo() -> RedisRepository:

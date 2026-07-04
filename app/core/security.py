@@ -27,7 +27,7 @@ class Security:
         self.oauth.register(
             name="google",
             client_id=self.SETTINGS.GOOGLE_CLIENT_ID,
-            client_secret=self.SETTINGS.GITHUB_CLIENT_SECRET,
+            client_secret=self.SETTINGS.GOOGLE_CLIENT_SECRET,
             server_metadata_url=self.SETTINGS.GOOGLE_OAUTH_URL,
             client_kwargs={
                 "scope": "openid email",

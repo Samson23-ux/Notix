@@ -30,7 +30,7 @@ class Request:
 
                 status = "success"
                 return res
-            except httpx.ConnectError, httpx.ConnectTimeout:
+            except (httpx.ConnectError, httpx.ConnectTimeout):
                 curr_retries += 1
 
         if status == "failure":
@@ -42,7 +42,7 @@ class Request:
         curr_retries: int = 0
         status: str = "failure"
 
-        while self.MAXIMUM_RETRIES < self.MAXIMUM_RETRIES and status == "failure":
+        while curr_retries < self.MAXIMUM_RETRIES and status == "failure":
             try:
                 res: httpx.Response = await self._async_client.get(
                     url, headers=headers, cookies=cookies
@@ -50,8 +50,11 @@ class Request:
 
                 status = "success"
                 return res
-            except httpx.ConnectError, httpx.ConnectTimeout:
+            except (httpx.ConnectError, httpx.ConnectTimeout):
                 curr_retries += 1
+        
+        if status == "failure":
+            raise CheckTimeoutError()
 
     def sync_post(
         self,
@@ -73,7 +76,7 @@ class Request:
         curr_retries: int = 0
         status: str = "failure"
 
-        while self.MAXIMUM_RETRIES < self.MAXIMUM_RETRIES and status == "failure":
+        while curr_retries < self.MAXIMUM_RETRIES and status == "failure":
             try:
                 res: httpx.Response = self._sync_client.get(
                     url, headers=headers, cookies=cookies
@@ -81,7 +84,7 @@ class Request:
 
                 status = "success"
                 return res
-            except httpx.ConnectError, httpx.ConnectTimeout:
+            except (httpx.ConnectError, httpx.ConnectTimeout):
                 curr_retries += 1
 
     def close(self):

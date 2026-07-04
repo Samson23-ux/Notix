@@ -9,6 +9,8 @@ from app.api.models.user import UserType
 
 class UserBase(BaseModel):
     type: UserType
+    is_active: bool = False
+    is_verified: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
