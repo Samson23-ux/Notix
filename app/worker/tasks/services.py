@@ -53,7 +53,7 @@ def get_otp_service() -> OtpService:
     return otp_service
 
 
-async def raise_for_5xx(response):
+def raise_for_5xx(response):
     response.raise_for_status()
 
 

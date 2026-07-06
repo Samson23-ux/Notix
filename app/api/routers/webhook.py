@@ -36,4 +36,4 @@ async def delete_endpoint(
     curr_user: CurrentActiveUser,
     webhook_service: WebhookServiceDep,
 ):
-    await webhook_service.delete_endpoint(curr_user, endpoint_id=endpoint_id)
+    await webhook_service.delete_endpoint(curr_user, endpoint_id)

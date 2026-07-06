@@ -37,6 +37,7 @@ class BaseTaskWithFailure(celery_app.Task):
         return countdown
 
     def _handle_failure(self, exc, kwargs, notis_type: str, retries: int):
+        print(f"KWARGS RECEIVED {kwargs}")
         from app.worker import get_notification_service, get_email_service
 
         try:

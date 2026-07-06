@@ -4,10 +4,12 @@ from sqlalchemy import Sequence
 import sentry_sdk.logger as sentry_logger
 
 
+from app.api.models import ApiKey
 from app.util import get_user_email
 from app.api.models.user import User
 from app.core.config import get_settings
 from app.api.services.channel import EventChannel
+from app.api.services.api_key import ApiKeyService
 from app.api.models.webhook import WebhookEndpoint
 from app.api.services.webhook import WebhookService
 from app.api.models.notification import Notification
@@ -52,9 +54,10 @@ class NotificationService:
     async def create_email_notification(
         self,
         api_key: str,
-        channel: EventChannel,
         curr_user: User,
+        channel: EventChannel,
         payload: EmailNotification,
+        api_key_service: ApiKeyService,
     ) -> NotificationResponse:
         type: str = payload.type.lower()
         priority: str = payload.priority.lower()
@@ -63,7 +66,9 @@ class NotificationService:
         user_email: str = get_user_email(curr_user)
         queue: str = self.QUEUE_MAP.get(priority, "notix.standard")
 
-        if not api_key:
+        api_key_db: ApiKey = await api_key_service._get_api_key(curr_user.id, api_key)
+
+        if not api_key_db:
             sentry_logger.error("Api Key not set by user {email}", email=user_email)
             raise ApiKeyMissingError()
 
@@ -79,7 +84,6 @@ class NotificationService:
             raise NotificationExistsError(key=idempotency_key)
 
         current_depth: int = await channel.queue_depth(queue)
-
 
         if current_depth > self.SETTINGS.MAXIMUM_QUEUE_DEPTH:
             sentry_logger.error("Maximum depth reached for queue {queue}", queue=queue)
@@ -138,6 +142,7 @@ class NotificationService:
         curr_user: User,
         channel: EventChannel,
         payload: WebhookNotification,
+        api_key_service: ApiKeyService,
         webhook_service: WebhookService,
     ) -> NotificationResponse:
         url: str = payload.webhook_url
@@ -146,7 +151,9 @@ class NotificationService:
         user_email: str = get_user_email(curr_user)
         queue: str = self.QUEUE_MAP.get(payload.priority, "notix.standard")
 
-        if not api_key:
+        api_key_db: ApiKey = await api_key_service._get_api_key(curr_user.id, api_key)
+
+        if not api_key_db:
             sentry_logger.error("Api Key not set by user {email}", email=user_email)
             raise ApiKeyMissingError()
 

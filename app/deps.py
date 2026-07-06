@@ -147,8 +147,8 @@ async def get_notification_service(notis_repo: NotificationRepo) -> Notification
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
-ApiKeyServiceDep = Annotated[ApiKeyService, Depends(get_api_key_service)]
 EmailServiceDep = Annotated[EmailService, Depends(get_email_service)]
+ApiKeyServiceDep = Annotated[ApiKeyService, Depends(get_api_key_service)]
 WebhookServiceDep = Annotated[WebhookService, Depends(get_webhook_service)]
 NotificationServiceDep = Annotated[
     NotificationService, Depends(get_notification_service)

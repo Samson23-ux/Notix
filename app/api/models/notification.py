@@ -34,7 +34,6 @@ class NotificationPriority(str, enum.Enum):
 class NotificationStatus(str, enum.Enum):
     PENDING = "pending"
     FAILED = "failed"
-    DEAD_LETTERED = "dead_lettered"
     DELIVERED = "delivered"
 
 

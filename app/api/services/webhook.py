@@ -85,7 +85,7 @@ class WebhookService:
         except Exception as e:
             await self._webhook_repo.rollback()
             if isinstance(e, UrlNotFoundError):
-                raise UrlNotFoundError() from e
+                raise UrlNotFoundError(id=endpoint_id) from e
 
             sentry_sdk.capture_exception(e)
             sentry_logger.error(

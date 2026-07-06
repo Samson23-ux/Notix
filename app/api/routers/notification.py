@@ -1,14 +1,14 @@
 from uuid import UUID
-from typing import Annotated
 from fastapi import APIRouter, Request
 
 
 from app.api.schemas.response import SuccessResponse
 from app.deps import (
-    NotificationServiceDep,
+    ApiKeyServiceDep,
     EvenetChannelDep,
     CurrentActiveUser,
     WebhookServiceDep,
+    NotificationServiceDep,
 )
 from app.api.schemas.notification import (
     EmailNotification,
@@ -29,13 +29,14 @@ async def create_notification(
     request: Request,
     curr_user: CurrentActiveUser,
     event_channel: EvenetChannelDep,
+    api_key_service: ApiKeyServiceDep,
     notification_payload: EmailNotification,
     notification_service: NotificationServiceDep,
 ):
     api_key: str = request.headers.get("api_key")
     notification: NotificationResponse = (
         await notification_service.create_email_notification(
-            api_key, event_channel, curr_user, notification_payload
+            api_key, curr_user, event_channel, notification_payload, api_key_service
         )
     )
     return SuccessResponse(
@@ -53,6 +54,7 @@ async def create_webhook_notification(
     request: Request,
     curr_user: CurrentActiveUser,
     event_channel: EvenetChannelDep,
+    api_key_service: ApiKeyServiceDep,
     webhook_service: WebhookServiceDep,
     webhook_payload: WebhookNotification,
     notification_service: NotificationServiceDep,
@@ -60,7 +62,12 @@ async def create_webhook_notification(
     api_key: str = request.headers.get("api_key")
     notification: NotificationResponse = (
         await notification_service.create_webhook_notification(
-            api_key, curr_user, event_channel, webhook_payload, webhook_service
+            api_key,
+            curr_user,
+            event_channel,
+            webhook_payload,
+            api_key_service,
+            webhook_service,
         )
     )
     return SuccessResponse(

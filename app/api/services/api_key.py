@@ -107,6 +107,9 @@ class ApiKeyService:
             )
             raise ServerError() from e
 
+    async def _get_api_key(self, user_id: UUID, key: str | None):
+        return await self._api_key_repo.get_record(key=key, user_id=user_id)
+
     async def delete_api_key(self, curr_user: User, key: str):
         user_id: UUID = curr_user.id
         user_email: str = get_user_email(curr_user)
@@ -127,7 +130,6 @@ class ApiKeyService:
             await self._api_key_repo.delete(model=api_key_db)
             await self._api_key_repo.commit()
         except Exception as e:
-            print(e)
             await self._api_key_repo.rollback()
 
             sentry_sdk.capture_exception(e)

@@ -17,6 +17,6 @@ class EmailRepository(BaseRepository[EmailBase, Email]):
     def _get_filters(self, **filters) -> list[Any]:
         filter_conditions = []
 
-        if "email_id" in filters:
-            filter_conditions.append(self.model.id == filters["email_id"])
+        if "id" in filters:
+            filter_conditions.append(self.model.id == filters["id"])
         return filter_conditions

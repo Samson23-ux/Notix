@@ -28,6 +28,7 @@ def collect_and_send_digests(self):
         )
 
         for digest in notification_digest:
+            current_status: str = digest.status
             email_service.api_key = SETTINGS.RESEND_API_KEY
             email_service.send(
                 SETTINGS.API_EMAIL, digest.recipient, digest.subject, digest.body
@@ -35,6 +36,13 @@ def collect_and_send_digests(self):
 
             digest.status = "delivered"
             digest.delivered_at = datetime.now(timezone.utc)
+
+            """Update if message is decided to be re-queued manually from dlq"""
+            if current_status == "failed":
+                digest.failed_at = None
+                digest.retry_count = None
+                digest.faliure_reason = None
+                digest.dead_lettered_at = None
 
             notification_service.update_notification(digest)
     except (
@@ -56,7 +64,7 @@ def collect_and_send_digests(self):
             )
         except MaxRetriesError as exc:
             self._handle_failure(
-                exc, self.request.kwargs, "notification", self.request.retries
+                exc, {"notification_id": digest.id}, "notification", self.request.retries
             )
 
             digest.dead_lettered_at = datetime.now(timezone.utc)

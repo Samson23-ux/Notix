@@ -163,6 +163,7 @@ def send_email_task(
         )
 
         if not already_processed:
+            current_status: str = notification.status
             email_service.api_key = RESEND_API_KEY
             email_service.send(SENDER_EMAIL, recipient_email, subject, body)
 
@@ -170,6 +171,13 @@ def send_email_task(
 
             notification.status = "delivered"
             notification.delivered_at = datetime.now(timezone.utc)
+
+            """Update if message is decided to be re-queued manually from dlq"""
+            if current_status == "failed":
+                notification.failed_at = None
+                notification.retry_count = None
+                notification.faliure_reason = None
+                notification.dead_lettered_at = None
 
             notification_service.update_notification(notification)
     except (
@@ -236,6 +244,7 @@ def send_critical_email_task(
         )
 
         if not already_processed:
+            current_status: str = notification.status
             email_service.api_key = RESEND_API_KEY
             email_service.send(SENDER_EMAIL, recipient_email, subject, body)
 
@@ -243,6 +252,13 @@ def send_critical_email_task(
 
             notification.status = "delivered"
             notification.delivered_at = datetime.now(timezone.utc)
+
+            """Update if message is decided to be re-queued manually from dlq"""
+            if current_status == "failed":
+                notification.failed_at = None
+                notification.retry_count = None
+                notification.faliure_reason = None
+                notification.dead_lettered_at = None
 
             notification_service.update_notification(notification)
     except (

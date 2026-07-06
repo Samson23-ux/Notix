@@ -16,8 +16,8 @@ class WebhookRepository(BaseRepository[WebhookBase, WebhookEndpoint]):
     def _get_filters(self, **filters) -> list[Any]:
         filter_conditions = []
 
-        if "webhook_id" in filters:
-            filter_conditions.append(self.model.id == filters["webhook_id"])
+        if "id" in filters:
+            filter_conditions.append(self.model.id == filters["id"])
         if "user_id" in filters:
             filter_conditions.append(self.model.user_id == filters["user_id"])
         if "endpoint" in filters:
