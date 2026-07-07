@@ -43,17 +43,17 @@ class Settings(BaseSettings):
 
     # google oauth
     GOOGLE_CLIENT_ID: str
-    GOOGLE_OAUTH_URL: str
+    GOOGLE_OAUTH_URL: str = "https://accounts.google.com/.well-known/openid-configuration"
     GOOGLE_CLIENT_SECRET: str
 
     # github oauth
-    GITHUB_USER_URL: str
+    GITHUB_USER_URL: str = "https://api.github.com/user"
     GITHUB_CLIENT_ID: str
-    GITHUB_EMAIL_URL: str
+    GITHUB_EMAIL_URL: str = "https://api.github.com/user/emails"
     GITHUB_CALLBACK_URL: str = "http://localhost:8000/api/v1/auth/github/callback"
     GITHUB_CLIENT_SECRET: str
-    GITHUB_AUTHORIZE_URL: str
-    GITHUB_ACCESS_TOKEN_URL: str
+    GITHUB_AUTHORIZE_URL: str = "https://github.com/login/oauth/authorize"
+    GITHUB_ACCESS_TOKEN_URL: str = "https://github.com/login/oauth/access_token"
 
     # session middleware
     SESSION_SECRET_KEY: str
