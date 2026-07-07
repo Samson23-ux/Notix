@@ -107,7 +107,7 @@ class ApiKeyService:
             )
             raise ServerError() from e
 
-    async def _get_api_key(self, user_id: UUID, key: str | None):
+    async def _get_api_key(self, user_id: UUID, key: str | None) -> ApiKey | None:
         return await self._api_key_repo.get_record(key=key, user_id=user_id)
 
     async def delete_api_key(self, curr_user: User, key: str):

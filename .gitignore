@@ -151,3 +151,6 @@ docker-compose.override.yml
 # Logs
 *.log
 logs/
+
+# Other
+dump.rdb

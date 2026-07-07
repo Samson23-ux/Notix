@@ -111,7 +111,8 @@ class TestNotificationEmail:
 
     @pytest.mark.asyncio
     async def test_retry_email_task(self, celery_task_config):
-        with pytest.raises(Retry) as exc:
+        with pytest.raises(Retry) as exc, patch(NOTIS_PATH) as notis_mock:
+            notis_mock.return_value = get_notis_mock("email")
             send_email_task.apply_async(
                 priority=5,
                 kwargs={
@@ -123,6 +124,7 @@ class TestNotificationEmail:
                 },
             )
 
+        notis_mock.assert_called()
         assert isinstance(exc.value.exc, MaxRetriesError)
 
     @pytest.mark.asyncio
@@ -147,7 +149,8 @@ class TestNotificationEmail:
 
     @pytest.mark.asyncio
     async def test_retry_critical_email_task(self, celery_task_config):
-        with pytest.raises(Retry) as exc:
+        with pytest.raises(Retry) as exc, patch(NOTIS_PATH) as notis_mock:
+            notis_mock.return_value = get_notis_mock("email")
             send_critical_email_task.apply_async(
                 priority=10,
                 kwargs={
@@ -159,6 +162,7 @@ class TestNotificationEmail:
                 },
             )
 
+        notis_mock.assert_called()
         assert isinstance(exc.value.exc, MaxRetriesError)
 
 
@@ -185,7 +189,8 @@ class TestWebhookNotification:
 
     @pytest.mark.asyncio
     async def test_retry_deliver_webhook_task(self, celery_task_config):
-        with pytest.raises(Retry) as exc:
+        with pytest.raises(Retry) as exc, patch(NOTIS_PATH) as notis_mock:
+            notis_mock.return_value = get_notis_mock("webhook")
             deliver_webhook_task.apply_async(
                 priority=5,
                 kwargs={
@@ -197,6 +202,7 @@ class TestWebhookNotification:
                 },
             )
 
+        notis_mock.assert_called()
         assert isinstance(exc.value.exc, MaxRetriesError)
 
 
@@ -214,11 +220,11 @@ class TestDigestNotification:
 
     @pytest.mark.asyncio
     async def test_retry_email_task(self, celery_task_config):
-        with patch(NOTIS_PATH) as notis_mock:
+        with pytest.raises(Retry) as exc, patch(NOTIS_PATH) as notis_mock:
             notis_mock.return_value = get_notis_mock("digest")
-            with pytest.raises(Retry) as exc:
-                collect_and_send_digests.apply_async(priority=5)
+            collect_and_send_digests.apply_async(priority=5)
 
+        notis_mock.assert_called()
         assert isinstance(exc.value.exc, MaxRetriesError)
 
 class TestDlq:
